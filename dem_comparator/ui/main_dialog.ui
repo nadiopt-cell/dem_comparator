@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DEMComparatorDialog</class>
+ <widget class="QDialog" name="DEMComparatorDialog">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>520</width><height>620</height></rect>
+  </property>
+  <property name="windowTitle"><string>DEM Comparator</string></property>
+  <layout class="QVBoxLayout" name="rootLayout">
+   <item>
+    <widget class="QGroupBox" name="extentGroupBox">
+     <property name="title"><string>Territory</string></property>
+     <layout class="QGridLayout" name="extentLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="lblExtMode">
+        <property name="text"><string>Extent source:</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="cmbExtentMode">
+        <item><property name="text"><string>Canvas extent</string></property></item>
+        <item><property name="text"><string>Selected vector layer</string></property></item>
+        <item><property name="text"><string>Drawn on map</string></property></item>
+        <item><property name="text"><string>Manual</string></property></item>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QToolButton" name="btnDrawRectangle">
+        <property name="text"><string>Draw on map</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="lblExtent">
+        <property name="text"><string>No extent selected.</string></property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="lblXMin"><property name="text"><string>X min:</string></property></widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="sbXMin"><property name="minimum"><double>-180.000000000000000</double></property><property name="maximum"><double>180.000000000000000</double></property></widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="lblXMax"><property name="text"><string>X max:</string></property></widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="sbXMax"><property name="minimum"><double>-180.000000000000000</double></property><property name="maximum"><double>180.000000000000000</double></property></widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="lblYMin"><property name="text"><string>Y min:</string></property></widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QDoubleSpinBox" name="sbYMin"><property name="minimum"><double>-90.000000000000000</double></property><property name="maximum"><double>90.000000000000000</double></property></widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="lblYMax"><property name="text"><string>Y max:</string></property></widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QDoubleSpinBox" name="sbYMax"><property name="minimum"><double>-90.000000000000000</double></property><property name="maximum"><double>90.000000000000000</double></property></widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="sourcesGroupBox">
+     <property name="title"><string>DEM sources</string></property>
+     <layout class="QVBoxLayout" name="sourcesLayout">
+      <item>
+       <widget class="QCheckBox" name="chkFabdem"><property name="text"><string>FABDEM (30 m, DTM)</string></property></widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="chkGlo30"><property name="text"><string>Copernicus GLO-30 (30 m, DSM)</string></property></widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="chkNasadem"><property name="text"><string>NASADEM (30 m, DSM)</string></property></widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="chkAw3d30"><property name="text"><string>ALOS AW3D30 (30 m, DSM)</string></property></widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="chkSrtm"><property name="text"><string>SRTM v3 (30 m, DSM)</string></property></widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="paramsGroupBox">
+     <property name="title"><string>Processing parameters</string></property>
+     <layout class="QGridLayout" name="paramsLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="lblRes"><property name="text"><string>Resolution:</string></property></widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="cmbResolution">
+        <item><property name="text"><string>10 m</string></property></item>
+        <item><property name="text"><string>30 m</string></property></item>
+        <item><property name="text"><string>90 m</string></property></item>
+       </widget>
+      </item>
+      <item row="0" column="2">
+       <widget class="QLabel" name="lblResampling"><property name="text"><string>Resampling:</string></property></widget>
+      </item>
+      <item row="0" column="3">
+       <widget class="QComboBox" name="cmbResampling">
+        <item><property name="text"><string>bilinear</string></property></item>
+        <item><property name="text"><string>cubic</string></property></item>
+        <item><property name="text"><string>nearest</string></property></item>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="lblCompareMode"><property name="text"><string>Comparison mode:</string></property></widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="cmbCompareMode">
+        <item><property name="text"><string>All pairs</string></property></item>
+        <item><property name="text"><string>Reference DEM</string></property></item>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QLabel" name="lblReference"><property name="text"><string>Reference:</string></property></widget>
+      </item>
+      <item row="1" column="3">
+       <widget class="QComboBox" name="cmbReference"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="outputGroupBox">
+     <property name="title"><string>Output</string></property>
+     <layout class="QHBoxLayout" name="outputLayout">
+      <item>
+       <widget class="QLineEdit" name="leOutputDir"/>
+      </item>
+      <item>
+       <widget class="QToolButton" name="btnBrowseOutput">
+        <property name="text"><string>Choose…</string></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QProgressBar" name="progressBar">
+     <property name="value"><number>0</number></property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="buttonsLayout">
+     <item>
+      <widget class="QPushButton" name="btnRun"><property name="text"><string>Download and compare</string></property></widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnCancel"><property name="text"><string>Cancel</string></property></widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnClose"><property name="text"><string>Close</string></property></widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

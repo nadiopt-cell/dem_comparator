@@ -1,0 +1,117 @@
+# DEM Comparator — QGIS Plugin
+
+[![QGIS](https://img.shields.io/badge/QGIS-3.34%2B-589632)](https://qgis.org)
+[![License: GPL v2+](https://img.shields.io/badge/License-GPLv2%2B-blue.svg)](LICENSE)
+
+**DEM Comparator** downloads several global DEMs for the same area, aligns them to a common grid, and compares them pairwise with statistics and an HTML report — so you can pick the elevation source that best fits your task.
+
+## Features
+
+- **5 global DEM sources**: FABDEM, Copernicus GLO-30, NASADEM, ALOS AW3D30, SRTM v3
+- All sources are fetched via **Microsoft Planetary Computer** (STAC + SAS) — **no API keys required**
+- Define the study area by: current map extent, vector layer extent, drawn rectangle, or manual coordinates
+- All rasters are automatically aligned to one grid (EPSG:4326; selectable resolution 10 / 30 / 90 m)
+- Pairwise comparison in two modes: all pairs, or against a chosen reference DEM
+- Per-pair outputs: difference raster + statistics (Mean Bias, MAE, RMSE, Std. Dev., Min/Max difference, valid pixel count)
+- Results are added to the project as layers grouped under **"DEM Comparator Results"**
+- **HTML report** with run parameters and the full statistics table
+- Long-running work runs as a background `QgsTask` — the UI stays responsive and can be cancelled
+
+| Source | Type | Resolution |
+|---|---|---|
+| FABDEM | DTM | ~30 m |
+| Copernicus GLO-30 | DSM | 30 m |
+| NASADEM | DSM | 30 m |
+| ALOS AW3D30 | DSM | 30 m |
+| SRTM v3 | DSM | 30 m |
+
+## Requirements
+
+- QGIS **3.34 or newer**
+- Internet connection
+- No external Python dependencies — only the QGIS API, GDAL and NumPy bundled with QGIS
+
+## Installation
+
+### From ZIP (recommended)
+
+1. Download the latest `dem_comparator-x.y.z.zip` from [Releases](https://github.com/nadiopt-cell/dem_comparator/releases).
+2. In QGIS: *Plugins → Manage and Install Plugins → Install from ZIP…*
+3. Enable **DEM Comparator** in the plugin list.
+
+### Manual
+
+Copy the `dem_comparator` folder into your QGIS profile plugins directory and restart QGIS:
+
+- Windows: `%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins`
+- Linux/macOS: `~/.local/share/QGIS/QGIS3/profiles/default/python/plugins`
+
+## Usage
+
+1. Click the **DEM Comparator** toolbar button to open the dialog.
+2. Set the study area (map view, layer extent, drawn rectangle, or manual coordinates).
+3. Tick the DEM sources to compare.
+4. Choose output resolution and comparison mode (all pairs or reference DEM).
+5. Press **Run** — download, alignment and comparison run in the background.
+6. When finished, aligned DEMs, difference rasters and an HTML report are added to your project.
+
+## Documentation
+
+- [Full documentation (English)](DEM_Comparator_Documentation_EN.pdf)
+- [Полная документация (русский)](DEM_Comparator_Documentation.pdf)
+
+## License
+
+Licensed under the **GNU General Public License v2.0 or later** — see [LICENSE](LICENSE).
+
+---
+
+# DEM Comparator — плагин для QGIS (русский)
+
+**DEM Comparator** скачивает несколько глобальных ЦМР на одну и ту же территорию, выравнивает их на единую сетку и попарно сравнивает со статистикой и HTML-отчётом — чтобы выбрать наиболее подходящий источник высот для вашей задачи.
+
+## Возможности
+
+- **5 глобальных источников DEM**: FABDEM, Copernicus GLO-30, NASADEM, ALOS AW3D30, SRTM v3
+- Все источники загружаются через **Microsoft Planetary Computer** (STAC + SAS) — **ключи API не нужны**
+- Задание территории: экстент карты, экстент векторного слоя, нарисованный прямоугольник или ручной ввод координат
+- Все растры автоматически приводятся к единой сетке (EPSG:4326; разрешение 10 / 30 / 90 м)
+- Два режима сравнения: все пары или относительно выбранного эталонного DEM
+- Для каждой пары: растр разницы и статистика (Mean Bias, MAE, RMSE, Std. Dev., Min/Max разницы, число валидных пикселей)
+- Результаты добавляются в проект группой слоёв **«DEM Comparator Results»**
+- **HTML-отчёт** с параметрами запуска и полной таблицей статистики
+- Долгие операции выполняются в фоне (`QgsTask`) — интерфейс не зависает, есть отмена
+
+## Требования
+
+- QGIS **3.34 или новее**
+- Доступ в интернет
+- Внешние Python-зависимости не нужны — только QGIS API, GDAL и NumPy из поставки QGIS
+
+## Установка
+
+### Из ZIP-архива (рекомендуется)
+
+1. Скачайте актуальный `dem_comparator-x.y.z.zip` со страницы [Releases](https://github.com/nadiopt-cell/dem_comparator/releases).
+2. В QGIS: *Модули → Управление модулями → Установить из ZIP…*
+3. Включите **DEM Comparator** в списке модулей.
+
+### Вручную
+
+Скопируйте папку `dem_comparator` в каталог плагинов профиля QGIS и перезапустите QGIS:
+
+- Windows: `%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins`
+- Linux/macOS: `~/.local/share/QGIS/QGIS3/profiles/default/python/plugins`
+
+## Использование
+
+1. Нажмите кнопку **DEM Comparator** на панели инструментов.
+2. Задайте территорию (вид карты, слой, прямоугольник на карте или координаты вручную).
+3. Отметьте галочками источники DEM.
+4. Выберите разрешение и режим сравнения (все пары или эталонный DEM).
+5. Нажмите **Run** — загрузка, выравнивание и сравнение выполнятся в фоне.
+6. По завершении в проект будут добавлены выровненные DEM, растры разниц и HTML-отчёт.
+
+## Лицензия
+
+**GNU General Public License v2.0 или новее** — см. [LICENSE](LICENSE).

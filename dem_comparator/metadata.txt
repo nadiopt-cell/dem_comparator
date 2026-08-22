@@ -1,0 +1,18 @@
+[general]
+name=DEM Comparator
+qgisMinimumVersion=3.34
+description=Download several global DEMs (FABDEM, GLO-30, NASADEM, AW3D30, SRTM) for the same area, align them to a common grid, and compare pairwise with statistics and an HTML report.
+version=0.1.0
+author=nadiopt-cell
+email=nadiopt-cell@users.noreply.github.com
+about=This plugin fetches and compares multiple global DEMs on the same extent to help you choose the most suitable source for your task. All sources are downloaded via Microsoft Planetary Computer (no API keys required). Licensed under GPLv2 or later.
+tracker=https://github.com/nadiopt-cell/dem_comparator/issues
+repository=https://github.com/nadiopt-cell/dem_comparator
+homepage=https://github.com/nadiopt-cell/dem_comparator
+tags=dem,dsm,dtm,raster,terrain,srtm,alos,copernicus
+category=Raster
+icon=icons/icon.png
+experimentalPlugin=False
+deprecated=False
+server=False
+hasProcessingProvider=False

@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local dev/agent notes (not part of the published plugin)
+CLAUDE.md
+PROGRESS.md
+.claude/
+
+# Local notes & secrets (never commit)
+апи*.txt
+ошибка*.txt
+
+# Build artifacts
+*.zip
+
+# OS junk
+Thumbs.db
+.DS_Store
