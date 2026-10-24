@@ -38,6 +38,7 @@ jobs:
   test-qgis:
     name: Tests (QGIS docker, full suite)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       # Run via `docker run` (not a `container:` job): the qgis/qgis image
@@ -47,7 +48,11 @@ jobs:
       # exist on Docker Hub).
       - name: Run full test suite inside QGIS
         run: |
-          docker run --rm -v "$PWD":/io -w /io qgis/qgis:3.40 bash -c '
-            python3 -m pip install --quiet --break-system-packages pytest &&
-            xvfb-run -a python3 -m pytest tests/ -v
+          set -x
+          docker run --rm -v "$PWD":/io -w /io qgis/qgis:3.40 bash -xc '
+            echo "=== python: $(python3 --version) ==="
+            python3 -m pip install --break-system-packages pytest 2>&1 | tail -2
+            echo "=== starting pytest ==="
+            xvfb-run -a python3 -m pytest tests/ -v -s
+            echo "=== pytest done ==="
           '
