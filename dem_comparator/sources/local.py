@@ -154,11 +154,23 @@ class LocalDEMSource(BaseDEMSource):
             ) from exc
 
         # Detect the "file does not intersect the AOI" case: GDAL happily
-        # writes an all-nodata raster instead of failing.
+        # writes an all-nodata raster instead of failing. Count valid
+        # pixels directly from the band (GetStatistics raises on all-nodata
+        # bands and its Python kwargs differ across bindings — reading the
+        # array is deterministic; a flat DEM with min == max stays valid).
         chk = gdal.Open(output_path, gdal.GA_ReadOnly)
         try:
-            stats = chk.GetRasterBand(1).GetStatistics(approx_ok=True, force=True)
-            if not stats or stats[1] <= stats[0]:  # min >= max → no data at all
+            import numpy as np
+
+            band = chk.GetRasterBand(1)
+            nodata = band.GetNoDataValue()
+            arr = band.ReadAsArray()
+            valid = (
+                0 if arr is None
+                else int(np.count_nonzero(arr != nodata)) if nodata is not None
+                else int(arr.size)
+            )
+            if valid == 0:
                 os.remove(output_path)
                 raise RuntimeError(
                     f"{self.name}: no valid pixels inside the selected extent "
@@ -166,8 +178,6 @@ class LocalDEMSource(BaseDEMSource):
                 )
         except RuntimeError:
             raise
-        except Exception:
-            pass  # statistics unavailable — let the pipeline try anyway
         finally:
             chk = None
 

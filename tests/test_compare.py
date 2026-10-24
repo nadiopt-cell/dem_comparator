@@ -62,8 +62,9 @@ def test_all_pairs_stats(two_dems, tmp_path):
     p = result.pairs[0]
     assert p.label_a == "A" and p.label_b == "B"
 
-    # 100 valid pairs (one A-nodata and one B-nodata pixel each kill 1).
-    assert p.valid_pixels == 98
+    # 97 valid pairs: A is nodata at (0,0) and (5,5), B at (2,2); the
+    # B-nodata pixel is A-valid, so it kills one more pair (100 - 3).
+    assert p.valid_pixels == 97
     assert math.isclose(p.mean_bias, 5.0, rel_tol=1e-6)
     assert math.isclose(p.mae, 5.0, rel_tol=1e-6)
     assert math.isclose(p.rmse, 5.0, rel_tol=1e-6)

@@ -4,6 +4,36 @@ All notable changes to the **DEM Comparator** QGIS plugin are documented
 here. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.3.2] — 2026-10-24
+
+### Fixed
+- **Aligned grid resolution** (`core/align.py`): the previous grid math
+  passed the raw extent together with a pixel count inflated by the
+  buffer pixels, so real GDAL silently derived a smaller pixel size than
+  requested (e.g. 0.0083° instead of 0.01° for small extents — up to
+  ~17 % off; negligible for large extents). The padded bounds are now
+  extended to an exact integer multiple of the resolution, making the
+  output pixel size exactly as configured on every axis (also on
+  latitude-aware anisotropic grids).
+- **Local DEM "does not intersect AOI" detection** (`sources/local.py`):
+  the check called `Band.GetStatistics(approx_ok=…, force=…)`, which
+  real GDAL Python bindings reject (kwargs are positional-only) — the
+  resulting `TypeError` was swallowed and an all-nodata clip was passed
+  on to alignment. Valid pixels are now counted directly from the band,
+  which also no longer misjudges a perfectly flat (min == max) DEM as
+  empty.
+- Tests: `test_local_source.py` used a point 50 km outside its fixture
+  raster and unpacked `TransformPoint` without forcing the traditional
+  lon/lat axis order (GDAL 3 returns lat/lon for EPSG:4326 by default);
+  `test_all_pairs_stats` expected 98 valid pairs where the correct count
+  is 97. These only surfaced now that the GDAL-dependent tests really
+  run (CI QGIS job).
+- CI: workflows are actually pushed to the repository (issue #9 is now
+  complete); the QGIS docker job uses the existing `qgis/qgis:3.40` LTR
+  image (the `final-3` tag does not exist), runs the suite via
+  `docker run`, installs pytest with `--break-system-packages` (PEP 668
+  image) and carries a job-level timeout.
+
 ## [0.3.1] — 2026-10-24
 
 ### Added

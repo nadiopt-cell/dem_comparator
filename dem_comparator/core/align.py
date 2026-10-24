@@ -127,12 +127,25 @@ class Aligner:
             # differ on a latitude-aware grid).
             res_x = self.resolution_deg
             res_y = self.resolution_deg_y
-            width = int(round((xmax - xmin) / res_x)) + 1 + 2 * self.extra_buffer_pixels
-            height = int(round((ymax - ymin) / res_y)) + 1 + 2 * self.extra_buffer_pixels
+            # Pad the union extent by extra_buffer_pixels on every side (so
+            # edge pixels get resampling context), then extend the padded
+            # bounds outward so each span is an EXACT integer multiple of
+            # the resolution. gdal.Warp derives the output pixel size as
+            # span/size when both outputBounds and width/height are given;
+            # with span == size * res the pixel size is therefore exactly
+            # the requested resolution instead of being silently shrunk.
+            pad_x = self.extra_buffer_pixels * res_x
+            pad_y = self.extra_buffer_pixels * res_y
+            xmin_p, ymin_p = xmin - pad_x, ymin - pad_y
+            xmax_p, ymax_p = xmax + pad_x, ymax + pad_y
+            width = max(1, int(math.ceil((xmax_p - xmin_p) / res_x - 1e-9)))
+            height = max(1, int(math.ceil((ymax_p - ymin_p) / res_y - 1e-9)))
+            xmax_p = xmin_p + width * res_x
+            ymax_p = ymin_p + height * res_y
 
             return Grid(
                 crs=COMMON_CRS.authid(),
-                extent=(xmin, ymin, xmax, ymax),
+                extent=(xmin_p, ymin_p, xmax_p, ymax_p),
                 width=width,
                 height=height,
                 pixel_size_x=res_x,

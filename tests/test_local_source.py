@@ -74,11 +74,15 @@ def test_download_clips_and_reprojects(tmp_path, require_gdal):
     from osgeo import gdal, osr
 
     gdal.UseExceptions()
+    osr.UseExceptions()
 
     # 1 m source raster in UTM 37N (EPSG:32637): 100x100 px, heights 0..99.
     src_path = str(tmp_path / "utm_dem.tif")
     srs = osr.SpatialReference()
     srs.ImportFromEPSG(32637)
+    # GDAL 3 honours the authority axis order (EPSG:4326 = lat, lon);
+    # force traditional lon/lat order for TransformPoint below.
+    srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
     drv = gdal.GetDriverByName("GTiff")
     ds = drv.Create(src_path, 100, 100, 1, gdal.GDT_Float32)
     ds.SetProjection(srs.ExportToWkt())
@@ -96,8 +100,9 @@ def test_download_clips_and_reprojects(tmp_path, require_gdal):
     # centre of the UTM raster -> lon/lat
     srs_wgs = osr.SpatialReference()
     srs_wgs.ImportFromEPSG(4326)
+    srs_wgs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
     tr = osr.CoordinateTransformation(srs, srs_wgs)
-    lon_c, lat_c, _ = tr.TransformPoint(550050.0, 4999950.0)
+    lon_c, lat_c, _ = tr.TransformPoint(500050.0, 4999950.0)
     pad = 0.001
     extent = ExtentInfo(
         QgsRectangle(lon_c - pad, lat_c - pad, lon_c + pad, lat_c + pad),
