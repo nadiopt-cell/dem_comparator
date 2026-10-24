@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: python -m pip install ruff
+      - name: Ruff check
+        run: python -m ruff check .
+
+  tests:
+    name: Tests (plain Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python -m pip install pytest numpy
+      - name: Run test suite
+        run: python -m pytest tests/ -v
+        # GDAL/QGIS-dependent tests skip themselves here and run in the
+        # test-qgis job below.
+
+  test-qgis:
+    name: Tests (QGIS docker, full suite)
+    runs-on: ubuntu-latest
+    container:
+      image: qgis/qgis:final-3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pytest (QGIS image ships numpy + bindings)
+        run: python3 -m pip install --quiet pytest
+      - name: Run full test suite inside QGIS
+        run: xvfb-run -a python3 -m pytest tests/ -v
