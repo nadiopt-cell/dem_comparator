@@ -11,6 +11,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> Running tests in $IMAGE"
 docker run --rm -v "$ROOT":/io -w /io "$IMAGE" bash -c '
-  python3 -m pip install --quiet pytest
+  python3 -m pip install --quiet --break-system-packages pytest
   xvfb-run -a python3 -m pytest tests/ -v
 '

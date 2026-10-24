@@ -48,6 +48,6 @@ jobs:
       - name: Run full test suite inside QGIS
         run: |
           docker run --rm -v "$PWD":/io -w /io qgis/qgis:3.40 bash -c '
-            python3 -m pip install --quiet pytest &&
+            python3 -m pip install --quiet --break-system-packages pytest &&
             xvfb-run -a python3 -m pytest tests/ -v
           '
