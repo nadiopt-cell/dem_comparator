@@ -38,11 +38,16 @@ jobs:
   test-qgis:
     name: Tests (QGIS docker, full suite)
     runs-on: ubuntu-latest
-    container:
-      image: qgis/qgis:final-3
     steps:
       - uses: actions/checkout@v4
-      - name: Install pytest (QGIS image ships numpy + bindings)
-        run: python3 -m pip install --quiet pytest
+      # Run via `docker run` (not a `container:` job): the qgis/qgis image
+      # entrypoint is not suited to GitHub's container lifecycle. Passing the
+      # test command as CMD makes the entrypoint exec it directly.
+      # qgis/qgis:3.40 is the current LTR image (the "final-3" tag does not
+      # exist on Docker Hub).
       - name: Run full test suite inside QGIS
-        run: xvfb-run -a python3 -m pytest tests/ -v
+        run: |
+          docker run --rm -v "$PWD":/io -w /io qgis/qgis:3.40 bash -c '
+            python3 -m pip install --quiet pytest &&
+            xvfb-run -a python3 -m pytest tests/ -v
+          '
