@@ -50,9 +50,8 @@ jobs:
         run: |
           set -x
           docker run --rm -v "$PWD":/io -w /io qgis/qgis:3.40 bash -xc '
-            echo "=== python: $(python3 --version) ==="
-            python3 -m pip install --break-system-packages pytest 2>&1 | tail -2
-            echo "=== starting pytest ==="
+            echo "=== python: $(python3 --version) ===" &&
+            python3 -m pip install --break-system-packages pytest 2>&1 | tail -2 &&
+            echo "=== starting pytest ===" &&
             xvfb-run -a python3 -m pytest tests/ -v -s
-            echo "=== pytest done ==="
           '
