@@ -6,7 +6,7 @@ and the post-processing steps (add layers, write report).
 from __future__ import annotations
 
 import os
-from typing import List, Optional
+from typing import Optional
 
 from qgis.core import (
     QgsApplication,
@@ -15,9 +15,8 @@ from qgis.core import (
     QgsRectangle,
 )
 from qgis.gui import QgisInterface
-from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QDesktopServices
-from qgis.PyQt.QtWidgets import QAction, QFileDialog, QMessageBox
+from qgis.PyQt.QtWidgets import QAction, QMessageBox
 from qgis.PyQt.QtCore import QUrl
 
 from .core.debug_log import log, log_error, log_warn, log_variable
@@ -26,11 +25,12 @@ from .core.extent_utils import (
     ExtentInfo,
     extract_extent_from_canvas,
     extract_extent_from_layer,
-    to_common_grid,
 )
 from .core.task import DemComparatorTask
+from .i18n import tr
 from .sources.base import default_source_cache_dir
-from .sources.registry import available_sources, build_shared_pc_client, get_source
+from .sources.local import LocalDEMSource, assign_local_ids
+from .sources.registry import build_shared_pc_client, get_source
 from .ui.draw_rectangle_tool import DrawnRectangleTool
 from .ui.main_dialog import DEMComparatorDialog
 
@@ -56,10 +56,10 @@ class DEMComparatorPlugin:
     def initGui(self) -> None:
         self.action = QAction(
             self._icon(),
-            "Open DEM Comparator",
+            tr("Open DEM Comparator"),
             self.iface.mainWindow(),
         )
-        self.action.setStatusTip("Compare several global DEMs on the same area")
+        self.action.setStatusTip(tr("Compare several global DEMs on the same area"))
         self.action.triggered.connect(self._on_run_clicked)
         self.iface.addPluginToRasterMenu(self._menu, self.action)
         self.iface.addToolBarIcon(self.action)
@@ -117,23 +117,39 @@ class DEMComparatorPlugin:
         state = self._dialog.state()
 
         log_variable("selected_sources", state.selected_sources)
+        log_variable("local_paths", state.local_paths)
         log_variable("extent_rect", state.extent_rect)
         log_variable("output_dir", state.output_dir)
         log_variable("resolution_m", state.resolution_m)
         log_variable("comparison_mode", state.comparison_mode)
 
         # ---- input validation
-        if not state.selected_sources:
+        if not state.selected_sources and not state.local_paths:
             log_warn("Validation: no sources selected")
-            QMessageBox.warning(self._dialog, "DEM Comparator", "Select at least one DEM source.")
+            QMessageBox.warning(
+                self._dialog, tr("DEM Comparator"), tr("Select at least one DEM source.")
+            )
             return
+        for path in state.local_paths:
+            if not os.path.isfile(path):
+                log_warn(f"Validation: local file not found: {path}")
+                QMessageBox.warning(
+                    self._dialog,
+                    tr("DEM Comparator"),
+                    tr("File not found: {path}").format(path=path),
+                )
+                return
         if state.extent_rect is None:
             log_warn("Validation: no extent")
-            QMessageBox.warning(self._dialog, "DEM Comparator", "No extent available.")
+            QMessageBox.warning(
+                self._dialog, tr("DEM Comparator"), tr("No extent available.")
+            )
             return
         if not state.output_dir:
             log_warn("Validation: no output dir")
-            QMessageBox.warning(self._dialog, "DEM Comparator", "Choose an output directory.")
+            QMessageBox.warning(
+                self._dialog, tr("DEM Comparator"), tr("Choose an output directory.")
+            )
             return
 
         try:
@@ -141,7 +157,11 @@ class DEMComparatorPlugin:
             log(f"ExtentInfo: rect={extent_info.rectangle.toString()}, crs={extent_info.crs.authid()}")
         except Exception as exc:
             log_error(f"build_extent_info failed: {exc}", exc)
-            QMessageBox.warning(self._dialog, "DEM Comparator", f"Invalid extent: {exc}")
+            QMessageBox.warning(
+                self._dialog,
+                tr("DEM Comparator"),
+                tr("Invalid extent: {exc}").format(exc=exc),
+            )
             return
 
         # ---- prepare sources (shared Planetary Computer client)
@@ -153,6 +173,12 @@ class DEMComparatorPlugin:
             get_source(sid, cache_root, pc_client=pc_client)
             for sid in state.selected_sources
         ]
+        # Local rasters join the downloaded ones as pseudo-sources (issue #4).
+        for path, sid in assign_local_ids(state.local_paths).items():
+            sources.append(
+                LocalDEMSource(path, source_id=sid, cache_root=cache_root,
+                               pc_client=pc_client)
+            )
         log(f"Sources ready: {[s.id for s in sources]}")
 
         # ---- output dir
@@ -164,7 +190,7 @@ class DEMComparatorPlugin:
         self._dialog.set_progress(0, 100)
 
         self._task = DemComparatorTask(
-            description="DEM Comparator: download + align + compare",
+            description=tr("DEM Comparator: download + align + compare"),
             output_dir=state.output_dir,
             sources=sources,
             extent=extent_info,
@@ -185,7 +211,7 @@ class DEMComparatorPlugin:
         if self._task is not None and not self._task.isCompleted():
             self._task.cancel()
             self.iface.messageBar().pushMessage(
-                "DEM Comparator", "Cancellation requested…", level=2, duration=3
+                tr("DEM Comparator"), tr("Cancellation requested…"), level=2, duration=3
             )
 
     def _on_task_progress(self, percent: float) -> None:
@@ -201,7 +227,7 @@ class DEMComparatorPlugin:
             return
 
         # 1) Add layers to the project inside a group.
-        group = self._ensure_group(RESULTS_GROUP)
+        group = self._ensure_group(tr(RESULTS_GROUP))
         added = 0
         for layer in self._task.aligned_layers:
             if layer.isValid():
@@ -217,8 +243,10 @@ class DEMComparatorPlugin:
         if self._task.report_path and os.path.exists(self._task.report_path):
             QDesktopServices.openUrl(QUrl.fromLocalFile(self._task.report_path))
             self.iface.messageBar().pushMessage(
-                "DEM Comparator",
-                f"Done. {added} layers added. Report: {self._task.report_path}",
+                tr("DEM Comparator"),
+                tr("Done. {added} layers added. Report: {path}").format(
+                    added=added, path=self._task.report_path
+                ),
                 level=0,
                 duration=8,
             )
@@ -234,15 +262,15 @@ class DEMComparatorPlugin:
         if self._task.cancelled:
             # User pressed Cancel — not an error, tell them politely.
             self.iface.messageBar().pushMessage(
-                "DEM Comparator",
-                "Run cancelled.",
+                tr("DEM Comparator"),
+                tr("Run cancelled."),
                 level=1,
                 duration=5,
             )
         elif self._task.exception is not None:
             self.iface.messageBar().pushMessage(
-                "DEM Comparator",
-                f"Run failed: {self._task.exception}",
+                tr("DEM Comparator"),
+                tr("Run failed: {exc}").format(exc=self._task.exception),
                 level=2,
                 duration=8,
             )

@@ -1,13 +1,16 @@
 # DEM Comparator — QGIS Plugin
 
 [![QGIS](https://img.shields.io/badge/QGIS-3.34%2B-589632)](https://qgis.org)
+[![CI](https://github.com/nadiopt-cell/dem_comparator/actions/workflows/ci.yml/badge.svg)](https://github.com/nadiopt-cell/dem_comparator/actions/workflows/ci.yml)
 [![License: GPL v2+](https://img.shields.io/badge/License-GPLv2%2B-blue.svg)](LICENSE)
 
-**DEM Comparator** downloads several global DEMs for the same area, aligns them to a common grid, and compares them pairwise with statistics and an HTML report — so you can pick the elevation source that best fits your task.
+**DEM Comparator** downloads several global DEMs for the same area, aligns them to a common grid, and compares them pairwise with statistics and an HTML report — so you can pick the elevation source that best fits your task. You can also bring your **own local DEM files** (lidar DTM, UAV photogrammetry…) into the same comparison.
 
 ## Features
 
 - **5 global DEM sources**: FABDEM, Copernicus GLO-30, NASADEM, ALOS AW3D30, SRTM v3
+- **Your own DEM files**: add local rasters (GeoTIFF, …) in the *Local DEM files* panel — they are clipped to the study area, reprojected and compared together with the downloaded sources (e.g. a 1 m lidar DTM vs GLO-30)
+- **Russian UI**: the dialog and messages follow the QGIS locale (English is the fallback)
 - All sources are fetched via **Microsoft Planetary Computer** (STAC + SAS) — **no API keys required**
 - Define the study area by: current map extent, vector layer extent, drawn rectangle, or manual coordinates
 - All rasters are automatically aligned to one grid (EPSG:4326; selectable resolution 10 / 30 / 90 m, converted to degrees latitude-aware so the ground sampling matches the requested metres)
@@ -57,7 +60,7 @@ Copy the `dem_comparator` folder into your QGIS profile plugins directory and re
 
 1. Click the **DEM Comparator** toolbar button to open the dialog.
 2. Set the study area (map view, layer extent, drawn rectangle, or manual coordinates).
-3. Tick the DEM sources to compare.
+3. Tick the DEM sources to compare — and/or add your own rasters under *Local DEM files*.
 4. Choose output resolution and comparison mode (all pairs or reference DEM).
 5. Press **Run** — download, alignment and comparison run in the background.
 6. When finished, aligned DEMs, difference rasters and an HTML report are added to your project.
@@ -69,7 +72,23 @@ Copy the `dem_comparator` folder into your QGIS profile plugins directory and re
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md). Latest: **v0.2.0** — styled difference rasters, working cancellation, honest coverage checks, settings persistence, live progress bar, pytest test suite.
+See [CHANGELOG.md](CHANGELOG.md). Latest: **v0.3.1** — local DEM file inputs, Russian UI localization, CI infrastructure (ruff + QGIS docker tests + automatic release ZIPs).
+
+### Development
+
+```bash
+# Lint
+python -m pip install ruff && python -m ruff check .
+
+# Tests (pure logic; GDAL/QGIS tests auto-skip)
+python3 -m pytest tests/
+
+# Full tests inside the official QGIS image (as CI does)
+scripts/docker_test.sh
+
+# Release: push a tag — CI builds the ZIP with qgis-plugin-ci and
+# attaches it to the GitHub release automatically.
+```
 
 ### Running the tests (optional)
 
@@ -94,6 +113,8 @@ Licensed under the **GNU General Public License v2.0 or later** — see [LICENSE
 ## Возможности
 
 - **5 глобальных источников DEM**: FABDEM, Copernicus GLO-30, NASADEM, ALOS AW3D30, SRTM v3
+- **Свои файлы DEM**: добавьте локальные растры (GeoTIFF, …) в панели *Local DEM files* — они обрезаются по территории, перепроецируются и сравниваются вместе со скачанными источниками (например, лидар DTM 1 м против GLO-30)
+- **Русский интерфейс**: диалог и сообщения следуют языку QGIS (английский — резервный)
 - Все источники загружаются через **Microsoft Planetary Computer** (STAC + SAS) — **ключи API не нужны**
 - Задание территории: экстент карты, экстент векторного слоя, нарисованный прямоугольник или ручной ввод координат
 - Все растры автоматически приводятся к единой сетке (EPSG:4326; разрешение 10 / 30 / 90 м с учётом широты — наземный шаг соответствует запрошенным метрам)
@@ -135,14 +156,30 @@ Licensed under the **GNU General Public License v2.0 or later** — see [LICENSE
 
 1. Нажмите кнопку **DEM Comparator** на панели инструментов.
 2. Задайте территорию (вид карты, слой, прямоугольник на карте или координаты вручную).
-3. Отметьте галочками источники DEM.
+3. Отметьте галочками источники DEM и/или добавьте свои растры в панели *Local DEM files*.
 4. Выберите разрешение и режим сравнения (все пары или эталонный DEM).
 5. Нажмите **Run** — загрузка, выравнивание и сравнение выполнятся в фоне.
 6. По завершении в проект будут добавлены выровненные DEM, растры разниц и HTML-отчёт.
 
 ## Журнал изменений
 
-См. [CHANGELOG.md](CHANGELOG.md). Актуально: **v0.2.0** — окрашенные растры разниц, работающая отмена, честная проверка покрытия, сохранение настроек, живой прогресс-бар, набор тестов pytest.
+См. [CHANGELOG.md](CHANGELOG.md). Актуально: **v0.3.1** — локальные файлы DEM как вход, русская локализация интерфейса, CI-инфраструктура (ruff + тесты в docker QGIS + автоматические ZIP релизов).
+
+### Разработка
+
+```bash
+# Линт
+python -m pip install ruff && python -m ruff check .
+
+# Тесты (чистая логика; GDAL/QGIS-тесты пропускаются сами)
+python3 -m pytest tests/
+
+# Полные тесты в официальном образе QGIS (как в CI)
+scripts/docker_test.sh
+
+# Релиз: достаточно запушить тег — CI соберёт ZIP через qgis-plugin-ci
+# и приложит его к GitHub-релизу автоматически.
+```
 
 ### Запуск тестов (необязательно)
 

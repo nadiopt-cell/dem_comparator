@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, Tuple
 
 from osgeo import gdal, osr
 

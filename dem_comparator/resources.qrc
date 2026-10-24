@@ -1,5 +1,0 @@
-<RCC>
-  <qresource prefix="/plugins/dem_comparator">
-    <file>icons/icon.png</file>
-  </qresource>
-</RCC>

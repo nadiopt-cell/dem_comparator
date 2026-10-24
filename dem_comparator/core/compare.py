@@ -165,7 +165,7 @@ class Comparator:
                     pair_stats.append(stats)
                 finally:
                     a_ds = None
-                    b_ds = None
+                    del b_ds  # release the GDAL dataset reference
 
         return ComparisonResult(pairs=pair_stats, reference=self.reference, labels=labels)
 

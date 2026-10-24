@@ -10,7 +10,6 @@ sources).
 from __future__ import annotations
 
 import os
-from dataclasses import asdict
 from typing import List, Optional, Tuple
 
 from qgis.core import (
@@ -18,7 +17,7 @@ from qgis.core import (
     QgsRasterLayer,
 )
 
-from .align import Aligner, RasterSpec, make_aligner
+from .align import RasterSpec, make_aligner
 from .compare import Comparator, ComparisonResult
 from .extent_utils import ExtentInfo, COMMON_CRS, to_common_grid
 from .report import ReportGenerator
@@ -128,9 +127,12 @@ class Orchestrator:
             raw_dir = os.path.join(self.output_dir, "raw", src.id)
             os.makedirs(raw_dir, exist_ok=True)
             raw_path = os.path.join(raw_dir, f"{src.id}.tif")
-            self._push_info(f"Downloading {src.name}...")
+            self._push_info(f"Fetching {src.name}...")
             try:
-                src.download(
+                # The source returns the path that must be used downstream:
+                # PC sources write to ``raw_path``, local-file sources
+                # (issue #4) clip/reproject to it and return the same path.
+                result_path = src.download(
                     common_extent,
                     raw_path,
                     feedback=self.feedback,
@@ -144,7 +146,7 @@ class Orchestrator:
                 if self.feedback is not None:
                     self.feedback.reportError(f"{src.name}: download failed: {exc}")
                 continue
-            downloaded.append((src, raw_path))
+            downloaded.append((src, result_path))
             self._set_progress(_PROGRESS_AFTER_AVAILABILITY + (i + 1) * step)
 
         if len(downloaded) < 2:

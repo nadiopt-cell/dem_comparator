@@ -1,0 +1,15 @@
+# Ruff configuration for the DEM Comparator plugin (issue #9).
+# QGIS 3.34+ ships Python 3.9+, so the target must stay at py39.
+target-version = "py39"
+line-length = 110
+extend-exclude = [".venv", "build", "dist"]
+
+[lint]
+select = ["E", "F", "W"]
+# E501: long lines are tolerated in Qt-heavy code (kept under 110 by style);
+# E741: `l` as a variable name is used for raster labels in compare.py loops.
+ignore = ["E501", "E741"]
+
+[lint.per-file-ignores]
+# Test files legitimately use asserts and fixtures.
+"tests/*" = ["E712"]

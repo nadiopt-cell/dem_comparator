@@ -1,0 +1,6 @@
+# Configuration for qgis-plugin-ci (https://github.com/opengisch/qgis-plugin-ci).
+# Used by .github/workflows/release.yml to package the plugin on tag push.
+plugin_path: dem_comparator
+github_organization_slug: nadiopt-cell
+project_slug: dem_comparator
+changelog_path: CHANGELOG.md

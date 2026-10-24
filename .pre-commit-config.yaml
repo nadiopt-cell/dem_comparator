@@ -1,0 +1,31 @@
+# Pre-commit hooks for the DEM Comparator plugin (issue #9).
+# Install once:  pip install pre-commit && pre-commit install
+# Run on everything:  pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.9
+    hooks:
+      - id: bandit
+        name: bandit (plugin code)
+        args: ["--skip", "B101"]   # asserts are fine outside tests; tests excluded below
+        files: ^dem_comparator/.*\.py$
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: package-lock.json
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-toml

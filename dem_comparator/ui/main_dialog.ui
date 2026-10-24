@@ -3,7 +3,7 @@
  <class>DEMComparatorDialog</class>
  <widget class="QDialog" name="DEMComparatorDialog">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>520</width><height>620</height></rect>
+   <rect><x>0</x><y>0</y><width>520</width><height>780</height></rect>
   </property>
   <property name="windowTitle"><string>DEM Comparator</string></property>
   <layout class="QVBoxLayout" name="rootLayout">
@@ -79,6 +79,43 @@
       </item>
       <item>
        <widget class="QCheckBox" name="chkSrtm"><property name="text"><string>SRTM v3 (30 m, DSM)</string></property></widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="localFilesGroupBox">
+     <property name="title"><string>Local DEM files</string></property>
+     <layout class="QVBoxLayout" name="localFilesLayout">
+      <item>
+       <widget class="QListWidget" name="listLocalDems"/>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="localButtonsLayout">
+        <item>
+         <widget class="QToolButton" name="btnAddLocal">
+          <property name="text"><string>Add files…</string></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QToolButton" name="btnRemoveLocal">
+          <property name="text"><string>Remove selected</string></property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="localButtonsSpacer">
+          <property name="orientation"><enum>Qt::Horizontal</enum></property>
+          <property name="sizeHint" stdset="0">
+           <size><width>40</width><height>20</height></size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="lblLocalHint">
+        <property name="text"><string>Local files are clipped to the selected extent (reprojected to EPSG:4326) and compared together with the sources above.</string></property>
+       </widget>
       </item>
      </layout>
     </widget>

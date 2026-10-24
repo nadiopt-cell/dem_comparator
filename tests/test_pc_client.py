@@ -16,7 +16,6 @@ from conftest import HAVE_QGIS  # noqa: F401  (ensures stubs load first)
 from dem_comparator.core import pc_client as pc_mod
 from dem_comparator.core.pc_client import (
     PCError,
-    PCItem,
     PlanetaryComputerClient,
     _safe_filename,
     download_to_file,

@@ -4,6 +4,40 @@ All notable changes to the **DEM Comparator** QGIS plugin are documented
 here. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.3.1] — 2026-10-24
+
+### Added
+- **Local DEM files as comparison inputs** (issue
+  [#4](https://github.com/nadiopt-cell/dem_comparator/issues/4)): a new
+  "Local DEM files" panel in the dialog accepts one or more rasters
+  (GeoTIFF, …) alongside the downloaded sources. Local files are clipped
+  to the selected extent, reprojected to EPSG:4326 and enter the
+  pipeline exactly like downloaded DEMs, so a 1 m lidar DTM can be
+  compared against Copernicus GLO-30 in a single run. Local files are
+  also available as reference-DEM candidates, and their paths persist
+  between QGIS sessions.
+- **Russian UI localization** (issue
+  [#7](https://github.com/nadiopt-cell/dem_comparator/issues/7)): when
+  the QGIS locale is Russian, the dialog, menu entry, message-bar and
+  warning texts are shown in Russian; English remains the fallback for
+  any other locale.
+- **Repository infrastructure** (issue
+  [#9](https://github.com/nadiopt-cell/dem_comparator/issues/9)):
+  - GitHub Actions CI: ruff lint, the plain-pytest suite, and the full
+    test suite inside the official `qgis/qgis` docker image (un-skips
+    the GDAL/QGIS-dependent tests);
+  - automatic release packaging: pushing a `vX.Y.Z` tag builds the
+    plugin ZIP with [qgis-plugin-ci](https://github.com/opengisch/qgis-plugin-ci)
+    and attaches it to the GitHub release;
+  - `pre-commit` config (ruff, bandit, detect-secrets) and a
+    `scripts/docker_test.sh` helper that mirrors the CI test job
+    locally.
+
+### Changed
+- Source download contract: `BaseDEMSource.download()` now returns the
+  path downstream stages must use (local sources reproject in this step;
+  Planetary Computer sources keep writing to the requested path).
+
 ## [0.3.0] — 2026-10-24
 
 ### Added

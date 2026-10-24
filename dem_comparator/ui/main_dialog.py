@@ -12,29 +12,23 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from qgis.PyQt import uic
-from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal
+from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtGui import QCloseEvent
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFileDialog,
-    QGroupBox,
-    QLabel,
-    QLineEdit,
-    QProgressBar,
-    QPushButton,
-    QToolButton,
 )
 
 from qgis.core import QgsSettings
 
 from ..core.align import RESAMPLING_BILINEAR, RESAMPLING_CUBIC, RESAMPLING_NEAREST
 from ..core.debug_log import log, log_error
+from ..i18n import apply_translations, tr
+from ..sources.local import assign_local_ids
 from ..sources.registry import available_sources
 
 _FORM, _BASE = uic.loadUiType(os.path.join(os.path.dirname(__file__), "main_dialog.ui"))
@@ -62,6 +56,7 @@ class DialogState:
     extent_rect: Optional[Tuple[float, float, float, float]]  # (xmin, ymin, xmax, ymax) or None
     extent_crs_authid: Optional[str]      # authid of the source CRS
     selected_sources: List[str]
+    local_paths: List[str]               # local DEM rasters (issue #4)
     resolution_m: float
     resampling: str
     comparison_mode: str         # "all" | "reference"
@@ -105,6 +100,10 @@ class DEMComparatorDialog(QDialog, _FORM):
         self.btnClose.clicked.connect(self.reject)
         self.btnDrawRectangle.clicked.connect(self.drawRectangleRequested.emit)
 
+        # Local DEM files (issue #4).
+        self.btnAddLocal.clicked.connect(self._add_local_files)
+        self.btnRemoveLocal.clicked.connect(self._remove_local_files)
+
         # Source checkboxes keep the reference combo in sync.
         for name in _SOURCE_CHECKBOX:
             chk: QCheckBox = getattr(self, name)
@@ -119,6 +118,10 @@ class DEMComparatorDialog(QDialog, _FORM):
         # Persist on every run and when the dialog is closed.
         self.btnRun.clicked.connect(self.save_settings)
 
+        # Russian UI (issue #7): rewrite widget texts when the QGIS locale
+        # is Russian. Runs last so restored values are covered too.
+        apply_translations(self)
+
     # -------------------------------------------------------------- state
     def state(self) -> DialogState:
         mode = self.extent_mode()
@@ -130,6 +133,7 @@ class DEMComparatorDialog(QDialog, _FORM):
             extent_rect=rect,
             extent_crs_authid=crs,
             selected_sources=self.selected_sources(),
+            local_paths=self.local_dem_paths(),
             resolution_m=self.selected_resolution_m(),
             resampling=self.selected_resampling(),
             comparison_mode=self.comparison_mode(),
@@ -148,6 +152,13 @@ class DEMComparatorDialog(QDialog, _FORM):
             if chk.isChecked():
                 out.append(source_id)
         return out
+
+    def local_dem_paths(self) -> List[str]:
+        """Absolute paths of the local DEM rasters added by the user."""
+        return [
+            self.listLocalDems.item(i).text()
+            for i in range(self.listLocalDems.count())
+        ]
 
     def selected_resolution_m(self) -> float:
         return (10.0, 30.0, 90.0)[self.cmbResolution.currentIndex()]
@@ -193,6 +204,35 @@ class DEMComparatorDialog(QDialog, _FORM):
         except Exception as exc:
             log_error(f"set_extent_from_user_draw failed: {exc}", exc)
 
+    # ------------------------------------------------------- local files
+    def _add_local_files(self) -> None:
+        """Pick one or more local DEM rasters and add them to the list."""
+        files, _filter = QFileDialog.getOpenFileNames(
+            self,
+            tr("Select DEM rasters"),
+            "",
+            tr("GeoTIFF rasters (*.tif *.tiff *.gtiff *.TIF *.TIFF);;All files (*)"),
+        )
+        existing = set(self.local_dem_paths())
+        added = 0
+        for path in files:
+            path = os.path.abspath(path)
+            if path not in existing:
+                self.listLocalDems.addItem(path)
+                existing.add(path)
+                added += 1
+        if added:
+            self._rebuild_reference_choices()
+
+    def _remove_local_files(self) -> None:
+        """Remove the currently selected local rasters from the list."""
+        removed = False
+        for item in self.listLocalDems.selectedItems():
+            self.listLocalDems.takeItem(self.listLocalDems.row(item))
+            removed = True
+        if removed:
+            self._rebuild_reference_choices()
+
     # -------------------------------------------------- settings persistence
     def load_settings(self) -> None:
         """Restore the last saved dialog state from QgsSettings (if any)."""
@@ -204,6 +244,16 @@ class DEMComparatorDialog(QDialog, _FORM):
             saved_dir = s.value(f"{g}/output_dir", "", type=str, section=section)
             if saved_dir:
                 self.set_output_dir(saved_dir)
+
+            # Local DEM file list (issue #4): stored as a string list.
+            try:
+                saved_paths = s.value(f"{g}/local_paths", [], type=list, section=section) or []
+                self.listLocalDems.clear()
+                for path in saved_paths:
+                    if isinstance(path, str) and path:
+                        self.listLocalDems.addItem(path)
+            except Exception:
+                pass
 
             for widget_name, source_id in _SOURCE_CHECKBOX.items():
                 key = f"{g}/src_{source_id}"
@@ -242,6 +292,7 @@ class DEMComparatorDialog(QDialog, _FORM):
             g = _SETTINGS_GROUP
 
             s.setValue(f"{g}/output_dir", self.output_dir(), section=section)
+            s.setValue(f"{g}/local_paths", self.local_dem_paths(), section=section)
             for widget_name, source_id in _SOURCE_CHECKBOX.items():
                 chk: QCheckBox = getattr(self, widget_name)
                 s.setValue(f"{g}/src_{source_id}", chk.isChecked(), section=section)
@@ -279,7 +330,6 @@ class DEMComparatorDialog(QDialog, _FORM):
         if mode == "manual":
             return "EPSG:4326"
         if mode == "canvas":
-            canvas = self.parent()
             # mainwindow has mapCanvas(); the dialog parents it loosely here
             try:
                 from qgis.utils import iface
@@ -308,11 +358,16 @@ class DEMComparatorDialog(QDialog, _FORM):
         rect = self._current_extent_rect()
         crs_authid = self._current_extent_crs_authid()
         if rect is None:
-            self.lblExtent.setText("No extent selected.")
+            self.lblExtent.setText(tr("No extent selected."))
         else:
             xmin, ymin, xmax, ymax = rect
-            text = f"Extent [{crs_authid}]: {xmin:.4f}, {ymin:.4f} – {xmax:.4f}, {ymax:.4f}"
-            self.lblExtent.setText(text)
+            self.lblExtent.setText(
+                tr("Extent [{crs}]: {x1}, {y1} – {x2}, {y2}").format(
+                    crs=crs_authid,
+                    x1=f"{xmin:.4f}", y1=f"{ymin:.4f}",
+                    x2=f"{xmax:.4f}", y2=f"{ymax:.4f}",
+                )
+            )
 
     def _emit_extent_changed(self) -> None:
         self._update_extent_label()
@@ -327,9 +382,15 @@ class DEMComparatorDialog(QDialog, _FORM):
         for src_id in self.selected_sources():
             cls = next(c for c in available_sources() if c.id == src_id)
             self.cmbReference.addItem(f"{cls.name} [{src_id}]", src_id)
+        # Local files (issue #4) join the reference candidates with the
+        # same unique ids the plugin will build sources with.
+        for path, sid in assign_local_ids(self.local_dem_paths()).items():
+            self.cmbReference.addItem(
+                f"{os.path.basename(path)} (local) [{sid}]", sid
+            )
 
     def _choose_output_dir(self) -> None:
-        chosen = QFileDialog.getExistingDirectory(self, "Output directory", self.output_dir())
+        chosen = QFileDialog.getExistingDirectory(self, tr("Output directory"), self.output_dir())
         if chosen:
             self.set_output_dir(chosen)
 
