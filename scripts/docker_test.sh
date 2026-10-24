@@ -10,7 +10,8 @@ IMAGE="${1:-qgis/qgis:3.40}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "==> Running tests in $IMAGE"
-docker run --rm -v "$ROOT":/io -w /io "$IMAGE" bash -c '
+docker run --rm -e QT_QPA_PLATFORM=offscreen -e PYTHONUNBUFFERED=1 \
+  -v "$ROOT":/io -w /io "$IMAGE" bash -c '
   python3 -m pip install --quiet --break-system-packages pytest
-  xvfb-run -a python3 -m pytest tests/ -v
+  python3 -m pytest tests/ -v
 '

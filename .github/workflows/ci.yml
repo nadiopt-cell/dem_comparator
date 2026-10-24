@@ -47,11 +47,21 @@ jobs:
       # qgis/qgis:3.40 is the current LTR image (the "final-3" tag does not
       # exist on Docker Hub).
       - name: Run full test suite inside QGIS
+        # QT_QPA_PLATFORM=offscreen instead of xvfb-run: the suite needs no
+        # real X server and xvfb startup is flaky on Actions runners
+        # (observed twice: pytest started under xvfb and never printed
+        # anything until the job timeout). PYTHONUNBUFFERED keeps the
+        # banner visible while hung.
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONUNBUFFERED: "1"
         run: |
           set -x
-          docker run --rm -v "$PWD":/io -w /io qgis/qgis:3.40 bash -xc '
-            echo "=== python: $(python3 --version) ===" &&
-            python3 -m pip install --break-system-packages pytest 2>&1 | tail -2 &&
-            echo "=== starting pytest ===" &&
-            xvfb-run -a python3 -m pytest tests/ -v -s
-          '
+          docker run --rm \
+            -e QT_QPA_PLATFORM=offscreen -e PYTHONUNBUFFERED=1 \
+            -v "$PWD":/io -w /io qgis/qgis:3.40 bash -xc '
+              echo "=== python: $(python3 --version) ===" &&
+              python3 -m pip install --break-system-packages pytest 2>&1 | tail -2 &&
+              echo "=== starting pytest ===" &&
+              python3 -m pytest tests/ -v
+            '
