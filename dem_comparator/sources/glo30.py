@@ -14,8 +14,8 @@ class GLO30Source(BaseDEMSource):
         "Mirrored on Microsoft Planetary Computer."
     )
 
-    def is_available(self, extent, crs=None) -> bool:
-        return True
+    # Global latitude coverage (defaults −90°…90°); tile-level coverage is
+    # verified by the STAC probe in BaseDEMSource.is_available().
 
 
 Source = GLO30Source

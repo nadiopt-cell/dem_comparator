@@ -13,6 +13,9 @@
 - All rasters are automatically aligned to one grid (EPSG:4326; selectable resolution 10 / 30 / 90 m)
 - Pairwise comparison in two modes: all pairs, or against a chosen reference DEM
 - Per-pair outputs: difference raster + statistics (Mean Bias, MAE, RMSE, Std. Dev., Min/Max difference, valid pixel count)
+- Difference rasters come **pre-styled** with a diverging blue→red colour ramp (blue = lower, red = higher)
+- Honest per-source **coverage checks** (latitude bounds + STAC probe) with clear skip reasons
+- Runs can be **cancelled** at every stage; dialog settings **persist** between QGIS sessions
 - Results are added to the project as layers grouped under **"DEM Comparator Results"**
 - **HTML report** with run parameters and the full statistics table
 - Long-running work runs as a background `QgsTask` — the UI stays responsive and can be cancelled
@@ -60,6 +63,20 @@ Copy the `dem_comparator` folder into your QGIS profile plugins directory and re
 - [Full documentation (English)](DEM_Comparator_Documentation_EN.pdf)
 - [Полная документация (русский)](DEM_Comparator_Documentation.pdf)
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). Latest: **v0.2.0** — styled difference rasters, working cancellation, honest coverage checks, settings persistence, live progress bar, pytest test suite.
+
+### Running the tests (optional)
+
+```bash
+python3 -m pytest tests/
+```
+
+Pure-logic tests run with any Python 3.10+ that has NumPy and pytest.
+Tests touching GDAL/QGIS (comparator, aligner, styling) automatically
+run when invoked with QGIS's Python interpreter and skip otherwise.
+
 ## License
 
 Licensed under the **GNU General Public License v2.0 or later** — see [LICENSE](LICENSE).
@@ -78,6 +95,9 @@ Licensed under the **GNU General Public License v2.0 or later** — see [LICENSE
 - Все растры автоматически приводятся к единой сетке (EPSG:4326; разрешение 10 / 30 / 90 м)
 - Два режима сравнения: все пары или относительно выбранного эталонного DEM
 - Для каждой пары: растр разницы и статистика (Mean Bias, MAE, RMSE, Std. Dev., Min/Max разницы, число валидных пикселей)
+- Растры разниц сразу **окрашены** в дивергентную шкалу синий→красный (синий = отрицательная разница, красный = положительная)
+- Честная **проверка покрытия** для каждого источника (широтные границы + STAC-проба) с понятными причинами пропуска
+- Запуск можно **отменить** на любом этапе; настройки диалога **сохраняются** между сессиями QGIS
 - Результаты добавляются в проект группой слоёв **«DEM Comparator Results»**
 - **HTML-отчёт** с параметрами запуска и полной таблицей статистики
 - Долгие операции выполняются в фоне (`QgsTask`) — интерфейс не зависает, есть отмена
@@ -111,6 +131,21 @@ Licensed under the **GNU General Public License v2.0 or later** — see [LICENSE
 4. Выберите разрешение и режим сравнения (все пары или эталонный DEM).
 5. Нажмите **Run** — загрузка, выравнивание и сравнение выполнятся в фоне.
 6. По завершении в проект будут добавлены выровненные DEM, растры разниц и HTML-отчёт.
+
+## Журнал изменений
+
+См. [CHANGELOG.md](CHANGELOG.md). Актуально: **v0.2.0** — окрашенные растры разниц, работающая отмена, честная проверка покрытия, сохранение настроек, живой прогресс-бар, набор тестов pytest.
+
+### Запуск тестов (необязательно)
+
+```bash
+python3 -m pytest tests/
+```
+
+Тесты чистой логики выполняются на любом Python 3.10+ с NumPy и pytest.
+Тесты, использующие GDAL/QGIS (сравнение, выравнивание, стили), выполняются
+под интерпретатором Python из состава QGIS и в остальном окружении
+аккуратно пропускаются.
 
 ## Лицензия
 

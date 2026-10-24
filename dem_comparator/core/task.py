@@ -11,12 +11,17 @@ from qgis.core import (
 )
 
 from .compare import ComparisonResult
-from .orchestrator import Orchestrator, OrchestratorError
+from .orchestrator import Orchestrator, OrchestratorCancelled, OrchestratorError
 from ..sources.base import BaseDEMSource
 
 
 class _ProgressForwarder(QgsProcessingFeedback):
-    """Tiny adapter that pipes ``pushInfo`` into a ``QgsTask``."""
+    """Pipes orchestrator feedback into a :class:`QgsTask`.
+
+    ``pushInfo`` becomes task messages, ``setProgress`` drives the task's
+    ``progressChanged`` signal (the dialog listens to it), and warnings /
+    errors are labelled so they stand out in the log panel.
+    """
 
     def __init__(self, task: "DemComparatorTask") -> None:
         super().__init__()
@@ -24,6 +29,15 @@ class _ProgressForwarder(QgsProcessingFeedback):
 
     def pushInfo(self, msg: str) -> None:  # noqa: N802 - QGIS API
         self._task.pushMessage(msg)
+
+    def pushWarning(self, msg: str) -> None:  # noqa: N802 - QGIS API
+        self._task.pushMessage(f"WARNING: {msg}")
+
+    def reportError(self, msg: str, fatal: bool = False) -> None:  # noqa: N802
+        self._task.pushMessage(f"ERROR: {msg}")
+
+    def setProgress(self, percent: float) -> None:  # noqa: N802 - QGIS API
+        self._task.setProgress(percent)
 
 
 class DemComparatorTask(QgsTask):
@@ -54,6 +68,7 @@ class DemComparatorTask(QgsTask):
         self.comparison: Optional[ComparisonResult] = None
         self.report_path: Optional[str] = None
         self.exception: Optional[BaseException] = None
+        self.cancelled: bool = False
 
     # ------------------------------------------------------ Qt threading
     def run(self) -> bool:  # noqa: D401 - QGIS task API
@@ -67,6 +82,10 @@ class DemComparatorTask(QgsTask):
                 comparison_mode=self.comparison_mode,
                 reference_id=self.reference_id,
             )
+        except OrchestratorCancelled as exc:
+            self.cancelled = True
+            self.exception = exc
+            return False
         except OrchestratorError as exc:
             self.exception = exc
             return False

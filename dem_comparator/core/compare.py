@@ -69,9 +69,18 @@ class Comparator:
         """``reference`` = label of the reference raster, or None for all-pairs."""
         self.output_dir = output_dir
         self.reference = reference
+        # Optional QgsProcessingFeedback (set by the orchestrator) used to
+        # honour user cancellation between pairs.
+        self.feedback = None
         os.makedirs(self.output_dir, exist_ok=True)
 
     # ---------------------------------------------------------- public
+    def _check_cancelled(self) -> None:
+        if self.feedback is not None and self.feedback.isCanceled():
+            from .orchestrator import OrchestratorCancelled
+
+            raise OrchestratorCancelled("Run cancelled by user during comparison.")
+
     def compare(self, rasters: List[Tuple[str, str]]) -> ComparisonResult:
         """Compute differences.
 
@@ -102,6 +111,7 @@ class Comparator:
             ref_arr, ref_ds = _read_as_float(ref_path)
             try:
                 for other_label, other_path in pairs_to_compute:
+                    self._check_cancelled()
                     other_arr, _ = _read_as_float(other_path)
                     other_arr = _match_extent(arr=other_arr, ds=other_arr.shape, ref_ds=ref_ds)
                     diff_path, stats = _write_diff_and_stats(
@@ -118,6 +128,7 @@ class Comparator:
         else:
             # All pairs.
             for (la, pa), (lb, pb) in itertools.combinations(rasters, 2):
+                self._check_cancelled()
                 a_arr, a_ds = _read_as_float(pa)
                 b_arr, b_ds = _read_as_float(pb)
                 try:

@@ -29,6 +29,23 @@ class OrchestratorError(Exception):
     """Raised when an unrecoverable issue prevents running the pipeline."""
 
 
+class OrchestratorCancelled(OrchestratorError):
+    """Raised when the user cancels the run mid-pipeline.
+
+    Subclasses :class:`OrchestratorError` so older callers that only catch
+    the base class still work, but :class:`~core.task.DemComparatorTask`
+    treats it specially ("cancelled" instead of "failed").
+    """
+
+
+# Progress checkpoints (percent) for the pipeline stages.
+_PROGRESS_AFTER_AVAILABILITY = 5
+_PROGRESS_AFTER_DOWNLOAD = 70
+_PROGRESS_AFTER_ALIGN = 85
+_PROGRESS_AFTER_COMPARE = 95
+_PROGRESS_AFTER_REPORT = 99
+
+
 class Orchestrator:
     """Runs the full download/align/compare/report pipeline."""
 
@@ -40,6 +57,20 @@ class Orchestrator:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         self.feedback = feedback
+
+    # ------------------------------------------------------- cancellation
+    def _check_cancelled(self) -> None:
+        """Raise :class:`OrchestratorCancelled` if the user pressed Cancel."""
+        if self.feedback is not None and self.feedback.isCanceled():
+            raise OrchestratorCancelled("Run cancelled by user.")
+
+    def _set_progress(self, percent: float) -> None:
+        if self.feedback is not None:
+            self.feedback.setProgress(max(0, min(100, percent)))
+
+    def _push_info(self, msg: str) -> None:
+        if self.feedback is not None:
+            self.feedback.pushInfo(msg)
 
     # ---------------------------------------------------------- public API
     def run(
@@ -62,6 +93,7 @@ class Orchestrator:
         # 1) Filter available sources for this extent.
         usable = []
         for src in sources:
+            self._check_cancelled()
             if src.is_available(common_extent):
                 usable.append(src)
             else:
@@ -74,15 +106,18 @@ class Orchestrator:
                 "Fewer than two DEM sources are available for this extent. "
                 "Nothing to compare."
             )
+        self._set_progress(_PROGRESS_AFTER_AVAILABILITY)
 
         # 2) Download per-source rasters.
         downloaded: List[Tuple[BaseDEMSource, str]] = []
-        for src in usable:
+        download_span = _PROGRESS_AFTER_DOWNLOAD - _PROGRESS_AFTER_AVAILABILITY
+        step = download_span / max(1, len(usable))
+        for i, src in enumerate(usable):
+            self._check_cancelled()
             raw_dir = os.path.join(self.output_dir, "raw", src.id)
             os.makedirs(raw_dir, exist_ok=True)
             raw_path = os.path.join(raw_dir, f"{src.id}.tif")
-            if self.feedback is not None:
-                self.feedback.pushInfo(f"Downloading {src.name}...")
+            self._push_info(f"Downloading {src.name}...")
             try:
                 src.download(common_extent, raw_path, feedback=self.feedback)
             except Exception as exc:
@@ -90,11 +125,13 @@ class Orchestrator:
                     self.feedback.reportError(f"{src.name}: download failed: {exc}")
                 continue
             downloaded.append((src, raw_path))
+            self._set_progress(_PROGRESS_AFTER_AVAILABILITY + (i + 1) * step)
 
         if len(downloaded) < 2:
             raise OrchestratorError(
                 "Not enough DEMs could be downloaded. See the feedback for details."
             )
+        self._set_progress(_PROGRESS_AFTER_DOWNLOAD)
 
         # 3) Align.
         aligned_dir = os.path.join(self.output_dir, "aligned")
@@ -106,7 +143,12 @@ class Orchestrator:
             for src, path in downloaded
         ]
         grid = aligner.compute_grid(raster_specs)
-        aligner.align(raster_specs, grid)
+        align_span = _PROGRESS_AFTER_ALIGN - _PROGRESS_AFTER_DOWNLOAD
+        align_step = align_span / max(1, len(raster_specs))
+        for i, spec in enumerate(raster_specs):
+            self._check_cancelled()
+            aligner.align([spec], grid)
+            self._set_progress(_PROGRESS_AFTER_DOWNLOAD + (i + 1) * align_step)
 
         aligned_layers: List[QgsRasterLayer] = []
         for spec in raster_specs:
@@ -122,10 +164,12 @@ class Orchestrator:
                     reference_label = src.name
                     break
         comparator = Comparator(diffs_dir, reference=reference_label)
+        comparator.feedback = self.feedback
         rasters_for_compare = [
             (spec.label, spec.output_path) for spec in raster_specs
         ]
         result = comparator.compare(rasters_for_compare)
+        self._set_progress(_PROGRESS_AFTER_COMPARE)
 
         # 5) Report.
         report_path = os.path.join(self.output_dir, "report.html")
@@ -144,15 +188,24 @@ class Orchestrator:
             "Selected sources": ", ".join(s.name for s in usable),
         }
         ReportGenerator(report_path).generate(params, result.pairs, reference_label)
+        self._set_progress(_PROGRESS_AFTER_REPORT)
 
         return aligned_layers, result, report_path
 
     @staticmethod
     def diff_layers(result: ComparisonResult) -> List[QgsRasterLayer]:
-        """Build a list of raster layers for every diff raster on disk."""
+        """Build styled raster layers for every diff raster on disk.
+
+        Each layer gets a diverging blue→red colour ramp symmetric around
+        zero, as required by SPEC 3.4. Styling is imported lazily so this
+        module still imports without QtGui.
+        """
+        from .styling import apply_diff_renderer
+
         layers: List[QgsRasterLayer] = []
         for p in result.pairs:
             layer = QgsRasterLayer(p.diff_raster, os.path.basename(p.diff_raster))
             if layer.isValid():
+                apply_diff_renderer(layer, p.diff_min, p.diff_max)
                 layers.append(layer)
         return layers

@@ -1,9 +1,6 @@
 """FABDEM (Forest And Buildings removed DEM) — via Microsoft Planetary Computer."""
 from __future__ import annotations
 
-from qgis.core import QgsProcessingFeedback, QgsRectangle
-from qgis.core import QgsCoordinateReferenceSystem
-
 from .base import BaseDEMSource, PCTileSpec
 
 
@@ -17,9 +14,9 @@ class FABDEMSource(BaseDEMSource):
         "removed. Mirrored on Microsoft Planetary Computer."
     )
 
-    # Coverage is global (same as Copernicus DEM).
-    def is_available(self, extent, crs: QgsCoordinateReferenceSystem | None = None) -> bool:
-        return True
+    # Coverage follows Copernicus GLO-30 (global); FABDEM tiles only exist
+    # over land — the STAC probe in BaseDEMSource.is_available() filters
+    # ocean-only bboxes honestly at run time.
 
 
 Source = FABDEMSource

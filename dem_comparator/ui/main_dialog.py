@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Tuple
 
 from qgis.PyQt import uic
 from qgis.PyQt.QtCore import QObject, Qt, pyqtSignal
+from qgis.PyQt.QtGui import QCloseEvent
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -29,6 +30,8 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QToolButton,
 )
+
+from qgis.core import QgsSettings
 
 from ..core.align import RESAMPLING_BILINEAR, RESAMPLING_CUBIC, RESAMPLING_NEAREST
 from ..core.debug_log import log, log_error
@@ -45,6 +48,10 @@ _SOURCE_CHECKBOX = {
     "chkAw3d30": "aw3d30",
     "chkSrtm": "srtm",
 }
+
+# QgsSettings (section Plugins) group used to persist dialog state between
+# QGIS sessions.
+_SETTINGS_GROUP = "dem_comparator"
 
 
 @dataclass
@@ -105,6 +112,12 @@ class DEMComparatorDialog(QDialog, _FORM):
         self._rebuild_reference_choices()
 
         self._last_drawn_extent: Optional[Tuple[float, float, float, float, str]] = None
+
+        # Restore the last session's choices (output dir, sources, …).
+        self.load_settings()
+
+        # Persist on every run and when the dialog is closed.
+        self.btnRun.clicked.connect(self.save_settings)
 
     # -------------------------------------------------------------- state
     def state(self) -> DialogState:
@@ -179,6 +192,70 @@ class DEMComparatorDialog(QDialog, _FORM):
             self._emit_extent_changed()
         except Exception as exc:
             log_error(f"set_extent_from_user_draw failed: {exc}", exc)
+
+    # -------------------------------------------------- settings persistence
+    def load_settings(self) -> None:
+        """Restore the last saved dialog state from QgsSettings (if any)."""
+        try:
+            s = QgsSettings()
+            section = QgsSettings.Plugins
+            g = _SETTINGS_GROUP
+
+            saved_dir = s.value(f"{g}/output_dir", "", type=str, section=section)
+            if saved_dir:
+                self.set_output_dir(saved_dir)
+
+            for widget_name, source_id in _SOURCE_CHECKBOX.items():
+                key = f"{g}/src_{source_id}"
+                if s.contains(key, section=section):
+                    chk: QCheckBox = getattr(self, widget_name)
+                    chk.setChecked(s.value(key, False, type=bool, section=section))
+
+            self.cmbResolution.setCurrentIndex(
+                s.value(f"{g}/resolution_idx", 1, type=int, section=section)
+            )
+            self.cmbResampling.setCurrentIndex(
+                s.value(f"{g}/resampling_idx", 0, type=int, section=section)
+            )
+            self.cmbCompareMode.setCurrentIndex(
+                s.value(f"{g}/compare_mode_idx", 0, type=int, section=section)
+            )
+
+            # Restore the reference DEM only if it is among the selected ones.
+            self._rebuild_reference_choices()
+            ref_id = s.value(f"{g}/reference_id", "", type=str, section=section)
+            if ref_id:
+                idx = self.cmbReference.findData(ref_id)
+                if idx >= 0:
+                    self.cmbReference.setCurrentIndex(idx)
+
+            self._update_compare_mode()
+            self._update_extent_mode()
+        except Exception as exc:  # settings must never break the dialog
+            log_error(f"load_settings failed: {exc}", exc)
+
+    def save_settings(self) -> None:
+        """Persist the current dialog state to QgsSettings."""
+        try:
+            s = QgsSettings()
+            section = QgsSettings.Plugins
+            g = _SETTINGS_GROUP
+
+            s.setValue(f"{g}/output_dir", self.output_dir(), section=section)
+            for widget_name, source_id in _SOURCE_CHECKBOX.items():
+                chk: QCheckBox = getattr(self, widget_name)
+                s.setValue(f"{g}/src_{source_id}", chk.isChecked(), section=section)
+            s.setValue(f"{g}/resolution_idx", self.cmbResolution.currentIndex(), section=section)
+            s.setValue(f"{g}/resampling_idx", self.cmbResampling.currentIndex(), section=section)
+            s.setValue(f"{g}/compare_mode_idx", self.cmbCompareMode.currentIndex(), section=section)
+            ref = self.selected_reference_source() or ""
+            s.setValue(f"{g}/reference_id", ref, section=section)
+        except Exception as exc:  # settings must never break the dialog
+            log_error(f"save_settings failed: {exc}", exc)
+
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API
+        self.save_settings()
+        super().closeEvent(event)
 
     # -------------------------------------------------------- internals
     def _current_extent_rect(self):

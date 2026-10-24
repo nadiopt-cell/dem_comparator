@@ -14,19 +14,9 @@ class AW3D30Source(BaseDEMSource):
         "License: free for non-military use."
     )
 
-    LAT_MIN = -82.0
-    LAT_MAX = 82.0
-
-    def is_available(self, extent, crs=None) -> bool:
-        from qgis.core import QgsCoordinateReferenceSystem
-
-        if extent.crs.authid() != "EPSG:4326":
-            return False
-        y0, y1 = extent.rectangle.yMinimum(), extent.rectangle.yMaximum()
-        return not (y1 < self.LAT_MIN or y0 > self.LAT_MAX)
-
-    def unavailable_reason(self, extent) -> str:
-        return "AW3D30 coverage is between 82°S and 82°N latitude."
+    # AW3D30 global release covers 82°S … 82°N.
+    lat_min = -82.0
+    lat_max = 82.0
 
 
 Source = AW3D30Source

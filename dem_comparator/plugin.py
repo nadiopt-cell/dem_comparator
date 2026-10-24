@@ -175,6 +175,8 @@ class DEMComparatorPlugin:
         )
         self._task.taskCompleted.connect(self._on_task_finished)
         self._task.taskTerminated.connect(self._on_task_failed)
+        # Live progress: orchestrator -> feedback -> task -> dialog bar.
+        self._task.progressChanged.connect(self._on_task_progress)
         # pipe progress messages into the dialog
         self._dialog.set_progress(5, 100)
         QgsApplication.taskManager().addTask(self._task)
@@ -185,6 +187,10 @@ class DEMComparatorPlugin:
             self.iface.messageBar().pushMessage(
                 "DEM Comparator", "Cancellation requested…", level=2, duration=3
             )
+
+    def _on_task_progress(self, percent: float) -> None:
+        if self._dialog is not None:
+            self._dialog.set_progress(int(percent), 100)
 
     # ------------------------------------------------------- task callbacks
     def _on_task_finished(self) -> None:
@@ -223,7 +229,17 @@ class DEMComparatorPlugin:
         if self._dialog is not None:
             self._dialog.set_running(False)
             self._dialog.set_progress(0, 100)
-        if self._task is not None and self._task.exception is not None:
+        if self._task is None:
+            return
+        if self._task.cancelled:
+            # User pressed Cancel — not an error, tell them politely.
+            self.iface.messageBar().pushMessage(
+                "DEM Comparator",
+                "Run cancelled.",
+                level=1,
+                duration=5,
+            )
+        elif self._task.exception is not None:
             self.iface.messageBar().pushMessage(
                 "DEM Comparator",
                 f"Run failed: {self._task.exception}",
