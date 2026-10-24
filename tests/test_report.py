@@ -10,7 +10,8 @@ from dem_comparator.core.report import ReportGenerator, _fmt
 
 
 def _pair(a="FABDEM", b="Copernicus GLO-30", rmse=2.5, bias=1.5,
-          vmin=-3.0, vmax=4.0, count=100):
+          vmin=-3.0, vmax=4.0, count=100, median=1.4, nmad=1.1,
+          le90=2.2, le95=2.8):
     return PairStat(
         label_a=a,
         label_b=b,
@@ -22,6 +23,10 @@ def _pair(a="FABDEM", b="Copernicus GLO-30", rmse=2.5, bias=1.5,
         diff_min=vmin,
         diff_max=vmax,
         diff_raster=f"DIFF_{a}_minus_{b}.tif",
+        median=median,
+        nmad=nmad,
+        le90=le90,
+        le95=le95,
     )
 
 
@@ -41,6 +46,19 @@ def test_report_written_and_contains_table(tmp_path):
     assert "FABDEM" in doc
     assert "NASADEM" in doc
     assert "EPSG:4326" in doc
+
+
+def test_report_contains_robust_metric_columns(tmp_path):
+    out = tmp_path / "report.html"
+    ReportGenerator(str(out)).generate({}, [_pair(nmad=1.05)], None)
+    doc = out.read_text(encoding="utf-8")
+    # New robust columns are present in the header...
+    for header in ("Median (m)", "NMAD (m)", "LE90 (m)", "LE95 (m)"):
+        assert header in doc, f"missing column header: {header}"
+    # ...and the values are rendered in the row.
+    assert "1.050" in doc          # nmad
+    assert "2.800" in doc          # le95
+    assert "normalised median absolute deviation" in doc  # footnote
 
 
 def test_report_summary_picks_smallest_rmse_all_pairs(tmp_path):

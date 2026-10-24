@@ -133,10 +133,20 @@ class Orchestrator:
             )
         self._set_progress(_PROGRESS_AFTER_DOWNLOAD)
 
-        # 3) Align.
+        # 3) Align. The metric resolution is converted to degrees using the
+        # AOI centre latitude (geodesic conversion), so the ground sampling
+        # equals the requested metres anywhere, not only at the equator.
         aligned_dir = os.path.join(self.output_dir, "aligned")
         os.makedirs(aligned_dir, exist_ok=True)
-        aligner = make_aligner(aligned_dir, resolution_m=resolution_m, resampling=resampling)
+        centre_lat = 0.5 * (
+            common_extent.rectangle.yMinimum() + common_extent.rectangle.yMaximum()
+        )
+        aligner = make_aligner(
+            aligned_dir,
+            resolution_m=resolution_m,
+            resampling=resampling,
+            centre_lat_deg=centre_lat,
+        )
         raster_specs: List[RasterSpec] = [
             RasterSpec(label=src.name, path=path, output_path=os.path.join(
                 aligned_dir, f"{src.id}_aligned.tif"))
@@ -176,6 +186,10 @@ class Orchestrator:
         params = {
             "CRS": COMMON_CRS.authid(),
             "Resolution (m)": resolution_m,
+            "AOI centre latitude": f"{centre_lat:.2f}°",
+            "Grid step (lon/lat, °)": (
+                f"{aligner.resolution_deg:.6f} / {aligner.resolution_deg_y:.6f}"
+            ),
             "Resampling": resampling,
             "Comparison mode": comparison_mode,
             "Reference DEM": reference_label or "(none)",

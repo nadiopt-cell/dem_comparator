@@ -6,7 +6,10 @@ For a list of aligned rasters we either:
 - use one raster as the reference and subtract it from the others.
 
 Output: difference GeoTIFFs on disk and per-pair statistics (mean bias,
-MAE, RMSE, std-dev, min, max, count of valid pixels).
+MAE, RMSE, std-dev, median, NMAD, LE90/LE95, min, max, count of valid
+pixels). The robust metrics (median, NMAD, LE90, LE95) follow the DEM
+validation literature (Höhle & Höhle, 2009) and are far less sensitive
+to outliers than RMSE.
 """
 from __future__ import annotations
 
@@ -21,6 +24,11 @@ from osgeo import gdal
 from .align import NODATA
 
 _PAIR_INDEX_PREFIX = "DIFF_"
+
+# Scale factor that turns a raw MAD into a normalised MAD comparable to the
+# standard deviation of a normal distribution (inverse normal CDF at 0.75,
+# 1/Phi^-1(3/4) ≈ 1.4826).
+_NMAD_SCALE = 1.4826
 
 
 @dataclass
@@ -37,6 +45,12 @@ class PairStat:
     diff_min: float
     diff_max: float
     diff_raster: str
+    # Robust metrics (defaults keep older positional/keyword constructors
+    # working; they are always filled by Comparator).
+    median: float = float("nan")
+    nmad: float = float("nan")
+    le90: float = float("nan")
+    le95: float = float("nan")
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -197,6 +211,7 @@ def _write_diff_and_stats(
     if count == 0:
         # No overlapping valid pixels: emit NaNs but still produce a raster.
         mean_bias = mae = rmse = std_dev = diff_min = diff_max = float("nan")
+        median = nmad = le90 = le95 = float("nan")
     else:
         mean_bias = float(np.mean(diff_only_valid))
         mae = float(np.mean(np.abs(diff_only_valid)))
@@ -204,6 +219,13 @@ def _write_diff_and_stats(
         std_dev = float(np.std(diff_only_valid))
         diff_min = float(np.min(diff_only_valid))
         diff_max = float(np.max(diff_only_valid))
+        # Robust statistics: resistant to outliers that inflate RMSE.
+        median = float(np.median(diff_only_valid))
+        mad = float(np.median(np.abs(diff_only_valid - median)))
+        nmad = _NMAD_SCALE * mad
+        abs_diff = np.abs(diff_only_valid)
+        le90 = float(np.percentile(abs_diff, 90))
+        le95 = float(np.percentile(abs_diff, 95))
 
     base = f"{_PAIR_INDEX_PREFIX}{label_a}_minus_{label_b}.tif"
     out_path = os.path.join(output_dir, base)
@@ -223,6 +245,10 @@ def _write_diff_and_stats(
         diff_min=diff_min,
         diff_max=diff_max,
         diff_raster=out_path,
+        median=median,
+        nmad=nmad,
+        le90=le90,
+        le95=le95,
     )
     return out_path, stats
 

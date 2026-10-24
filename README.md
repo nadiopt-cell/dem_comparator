@@ -10,9 +10,9 @@
 - **5 global DEM sources**: FABDEM, Copernicus GLO-30, NASADEM, ALOS AW3D30, SRTM v3
 - All sources are fetched via **Microsoft Planetary Computer** (STAC + SAS) — **no API keys required**
 - Define the study area by: current map extent, vector layer extent, drawn rectangle, or manual coordinates
-- All rasters are automatically aligned to one grid (EPSG:4326; selectable resolution 10 / 30 / 90 m)
+- All rasters are automatically aligned to one grid (EPSG:4326; selectable resolution 10 / 30 / 90 m, converted to degrees latitude-aware so the ground sampling matches the requested metres)
 - Pairwise comparison in two modes: all pairs, or against a chosen reference DEM
-- Per-pair outputs: difference raster + statistics (Mean Bias, MAE, RMSE, Std. Dev., Min/Max difference, valid pixel count)
+- Per-pair outputs: difference raster + statistics (Mean Bias, MAE, RMSE, Std. Dev., Median, NMAD, LE90/LE95, Min/Max difference, valid pixel count)
 - Difference rasters come **pre-styled** with a diverging blue→red colour ramp (blue = lower, red = higher)
 - Honest per-source **coverage checks** (latitude bounds + STAC probe) with clear skip reasons
 - Runs can be **cancelled** at every stage; dialog settings **persist** between QGIS sessions
@@ -92,9 +92,9 @@ Licensed under the **GNU General Public License v2.0 or later** — see [LICENSE
 - **5 глобальных источников DEM**: FABDEM, Copernicus GLO-30, NASADEM, ALOS AW3D30, SRTM v3
 - Все источники загружаются через **Microsoft Planetary Computer** (STAC + SAS) — **ключи API не нужны**
 - Задание территории: экстент карты, экстент векторного слоя, нарисованный прямоугольник или ручной ввод координат
-- Все растры автоматически приводятся к единой сетке (EPSG:4326; разрешение 10 / 30 / 90 м)
+- Все растры автоматически приводятся к единой сетке (EPSG:4326; разрешение 10 / 30 / 90 м с учётом широты — наземный шаг соответствует запрошенным метрам)
 - Два режима сравнения: все пары или относительно выбранного эталонного DEM
-- Для каждой пары: растр разницы и статистика (Mean Bias, MAE, RMSE, Std. Dev., Min/Max разницы, число валидных пикселей)
+- Для каждой пары: растр разницы и статистика (Mean Bias, MAE, RMSE, Std. Dev., Median, NMAD, LE90/LE95, Min/Max разницы, число валидных пикселей)
 - Растры разниц сразу **окрашены** в дивергентную шкалу синий→красный (синий = отрицательная разница, красный = положительная)
 - Честная **проверка покрытия** для каждого источника (широтные границы + STAC-проба) с понятными причинами пропуска
 - Запуск можно **отменить** на любом этапе; настройки диалога **сохраняются** между сессиями QGIS

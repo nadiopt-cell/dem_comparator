@@ -4,6 +4,28 @@ All notable changes to the **DEM Comparator** QGIS plugin are documented
 here. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Robust accuracy metrics** (issue [#2](https://github.com/nadiopt-cell/dem_comparator/issues/2)):
+  per-pair **median**, **NMAD** (normalised median absolute deviation,
+  Höhle & Höhle 2009) and **LE90/LE95** (90th/95th percentile of the
+  absolute difference) are now computed next to RMSE and shown as new
+  columns in the HTML report. Robust metrics are resistant to the
+  outliers that inflate RMSE, matching how FABDEM/Copernicus GLO-30 are
+  validated in the literature.
+
+### Changed
+- **Latitude-aware grid resolution** (issue
+  [#1](https://github.com/nadiopt-cell/dem_comparator/issues/1)): the
+  requested metric resolution is now converted to degrees using geodesic
+  metres-per-degree at the AOI centre latitude (separately for the
+  east-west and north-south steps), instead of a single equator factor.
+  At 60° N the old code sampled ~56 m east-west when 30 m was requested;
+  the ground sampling now matches the requested metres anywhere on the
+  globe. The report shows the AOI centre latitude and the actual lon/lat
+  grid steps. A full UTM target-CRS option remains future work.
+
 ## [0.2.0] — 2026-10-24
 
 ### Fixed

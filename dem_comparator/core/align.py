@@ -3,7 +3,9 @@
 The "common grid" is defined by:
 
 - one CRS (EPSG:4326 — set in ``extent_utils.COMMON_CRS``);
-- one resolution in CRS units (degrees) for that resolution;
+- one resolution in CRS units (degrees) for that resolution, derived
+  from a metric resolution using latitude-aware geodesic conversion
+  (see :func:`make_aligner`);
 - one extent (the union of all provided extents, optionally padded);
 - one origin (top-left corner) so pixels stack up across rasters.
 
@@ -13,6 +15,7 @@ Float32 raster with a known nodata value (``-9999``).
 """
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
@@ -70,13 +73,23 @@ class Aligner:
         resolution_deg: float,
         resampling: str = RESAMPLING_BILINEAR,
         extra_buffer_pixels: int = 1,
+        resolution_deg_y: Optional[float] = None,
     ) -> None:
+        """``resolution_deg`` is the X (east-west) step; ``resolution_deg_y``
+        defaults to the same value and can differ for latitude-aware grids
+        (metres-per-degree along parallels differs from along meridians).
+        """
         if resampling not in VALID_RESAMPLING:
             raise ValueError(f"Unsupported resampling: {resampling}")
         if resolution_deg <= 0:
             raise ValueError("resolution_deg must be > 0")
+        if resolution_deg_y is not None and resolution_deg_y <= 0:
+            raise ValueError("resolution_deg_y must be > 0")
         self.output_dir = output_dir
         self.resolution_deg = resolution_deg
+        self.resolution_deg_y = (
+            resolution_deg_y if resolution_deg_y is not None else resolution_deg
+        )
         self.resampling = resampling
         self.extra_buffer_pixels = extra_buffer_pixels
         os.makedirs(self.output_dir, exist_ok=True)
@@ -110,18 +123,20 @@ class Aligner:
                 raise RuntimeError("No rasters supplied")
 
             xmin, ymin, xmax, ymax = total_extent
-            # Snap to the requested pixel resolution.
-            res = self.resolution_deg
-            width = int(round((xmax - xmin) / res)) + 1 + 2 * self.extra_buffer_pixels
-            height = int(round((ymax - ymin) / res)) + 1 + 2 * self.extra_buffer_pixels
+            # Snap to the requested pixel resolution (X and Y steps may
+            # differ on a latitude-aware grid).
+            res_x = self.resolution_deg
+            res_y = self.resolution_deg_y
+            width = int(round((xmax - xmin) / res_x)) + 1 + 2 * self.extra_buffer_pixels
+            height = int(round((ymax - ymin) / res_y)) + 1 + 2 * self.extra_buffer_pixels
 
             return Grid(
                 crs=COMMON_CRS.authid(),
                 extent=(xmin, ymin, xmax, ymax),
                 width=width,
                 height=height,
-                pixel_size_x=res,
-                pixel_size_y=-res,
+                pixel_size_x=res_x,
+                pixel_size_y=-res_y,
             )
         finally:
             if ds is not None:
@@ -158,12 +173,74 @@ class Aligner:
         return out_paths
 
 
+
+# --------------------------------------------------------------------- geodesy
+
+
+def metres_per_degree_latitude(lat_deg: float) -> float:
+    """Metres per one degree of latitude at ``lat_deg`` (WGS84 approx).
+
+    Accurate series expansion (error < 1 m over ±90°):
+    111132.92 − 559.82·cos(2φ) + 1.175·cos(4φ) − 0.0023·cos(6φ).
+    """
+    phi = math.radians(lat_deg)
+    return (
+        111_132.92
+        - 559.82 * math.cos(2.0 * phi)
+        + 1.175 * math.cos(4.0 * phi)
+        - 0.0023 * math.cos(6.0 * phi)
+    )
+
+
+def metres_per_degree_longitude(lat_deg: float) -> float:
+    """Metres per one degree of longitude at ``lat_deg`` (WGS84 approx).
+
+    Accurate series expansion (error < 1 m over ±90°):
+    111412.84·cos(φ) − 93.5·cos(3φ) + 0.118·cos(5φ).
+    Returns ~111.32 km at the equator and ~55.8 km at 60°.
+    """
+    phi = math.radians(lat_deg)
+    return (
+        111_412.84 * math.cos(phi)
+        - 93.5 * math.cos(3.0 * phi)
+        + 0.118 * math.cos(5.0 * phi)
+    )
+
+
+# Latitude beyond which the longitude conversion is clamped (cos(lat) gets
+# too small near the poles and any tiny error explodes into huge degree
+# steps). No global DEM covers ±82°+ anyway.
+_MAX_SAFE_CENTRE_LAT = 82.0
+
+
 def make_aligner(
     output_dir: str,
     resolution_m: float,
     resampling: str = RESAMPLING_BILINEAR,
-    at_equator_m_per_deg: float = 111_320.0,
+    centre_lat_deg: Optional[float] = None,
 ) -> Aligner:
-    """Convert a metric resolution to degrees (for EPSG:4326)."""
-    resolution_deg = resolution_m / at_equator_m_per_deg
-    return Aligner(output_dir, resolution_deg=resolution_deg, resampling=resampling)
+    """Convert a metric resolution to degrees (for EPSG:4326).
+
+    Two modes:
+
+    - ``centre_lat_deg=None`` (legacy): one equatorial factor for both
+      axes (111 320 m/deg). Kept for backward compatibility.
+    - ``centre_lat_deg=<lat>`` (default for new runs): geodesic
+      metres-per-degree evaluated at the AOI centre latitude, separately
+      for X and Y, so the ground sampling equals ``resolution_m`` on the
+      ground at the centre of the study area instead of only at the
+      equator.
+    """
+    if centre_lat_deg is None:
+        resolution_deg = resolution_m / 111_320.0
+        return Aligner(output_dir, resolution_deg=resolution_deg, resampling=resampling)
+
+    lat = max(-_MAX_SAFE_CENTRE_LAT, min(_MAX_SAFE_CENTRE_LAT, centre_lat_deg))
+    res_deg_x = resolution_m / metres_per_degree_longitude(lat)
+    res_deg_y = resolution_m / metres_per_degree_latitude(lat)
+    return Aligner(
+        output_dir,
+        resolution_deg=res_deg_x,
+        resolution_deg_y=res_deg_y,
+        resampling=resampling,
+    )

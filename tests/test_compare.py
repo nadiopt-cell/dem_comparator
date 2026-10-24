@@ -71,6 +71,14 @@ def test_all_pairs_stats(two_dems, tmp_path):
     assert math.isclose(p.diff_min, 5.0, rel_tol=1e-6)
     assert math.isclose(p.diff_max, 5.0, rel_tol=1e-6)
 
+    # Robust metrics on a constant difference: median == bias, MAD == 0,
+    # so NMAD collapses to 0 while RMSE stays at 5; all |d| are 5 so the
+    # LE90/LE95 percentiles are exactly 5 as well.
+    assert math.isclose(p.median, 5.0, rel_tol=1e-6)
+    assert math.isclose(p.nmad, 0.0, abs_tol=1e-6)
+    assert math.isclose(p.le90, 5.0, rel_tol=1e-6)
+    assert math.isclose(p.le95, 5.0, rel_tol=1e-6)
+
     # Diff raster must exist with the exact pairwise naming convention.
     assert p.diff_raster.endswith("DIFF_A_minus_B.tif")
 
@@ -123,3 +131,60 @@ def test_zero_valid_pixels_yields_nan_stats(tmp_path):
     assert p.valid_pixels == 0
     assert math.isnan(p.mean_bias)
     assert math.isnan(p.rmse)
+    assert math.isnan(p.median)
+    assert math.isnan(p.nmad)
+    assert math.isnan(p.le90)
+    assert math.isnan(p.le95)
+
+
+# ------------------------------------------------------- robust vs outliers
+def test_nmad_resists_outliers_that_inflate_rmse(tmp_path):
+    """DEM B = A − 5 with two huge outliers.
+
+    RMSE explodes (~86 m), but the robust metrics stay at the true
+    surface offset (median 5 m, NMAD ≈ 0) — this is the whole point of
+    NMAD in DEM validation (Höhle & Höhle, 2009).
+    """
+    a = np.full((10, 10), 100.0)
+    a[0, 0] = NODATA
+    a[5, 5] = NODATA
+    b = np.full((10, 10), 95.0)
+    b[3, 3] = -500.0   # diff = 600
+    b[7, 7] = -500.0   # diff = 600
+
+    pa = str(tmp_path / "a.tif")
+    pb = str(tmp_path / "b.tif")
+    _write(pa, a)
+    _write(pb, b)
+
+    p = Comparator(str(tmp_path / "diffs")).compare([("A", pa), ("B", pb)]).pairs[0]
+    assert p.valid_pixels == 98
+    assert math.isclose(p.median, 5.0, rel_tol=1e-6)
+    assert math.isclose(p.nmad, 0.0, abs_tol=1e-6)
+    # 96 of 98 diffs are exactly 5 → both the 90th and 95th percentile of
+    # |d| are still 5.0 (the outliers sit in the top ~2%).
+    assert math.isclose(p.le90, 5.0, rel_tol=1e-6)
+    assert math.isclose(p.le95, 5.0, rel_tol=1e-6)
+    # Sanity: RMSE must be inflated by the outliers, far above NMAD.
+    assert p.rmse > 50.0
+    assert p.nmad < p.rmse / 10
+
+
+def test_le90_le95_and_median_on_uniform_diffs(tmp_path):
+    """d = row % 10 → exact median/MAD/LE90/LE95 expectations."""
+    a = np.full((10, 10), 100.0)
+    b = 100.0 - (np.arange(10)[:, None] % 10) * np.ones((10, 10))
+
+    pa = str(tmp_path / "a.tif")
+    pb = str(tmp_path / "b.tif")
+    _write(pa, a)
+    _write(pb, b)
+
+    p = Comparator(str(tmp_path / "diffs")).compare([("A", pa), ("B", pb)]).pairs[0]
+    assert p.valid_pixels == 100
+    # d ∈ {0..9}, each 10×: median = 4.5, MAD = 2.5, NMAD = 2.5·1.4826.
+    assert math.isclose(p.median, 4.5, rel_tol=1e-6)
+    assert math.isclose(p.nmad, 2.5 * 1.4826, rel_tol=1e-4)
+    # numpy linear percentile: index 0.9·99 = 89.1 → 8.1; index 0.95·99 = 94.05 → 9.0.
+    assert math.isclose(p.le90, 8.1, rel_tol=1e-5)
+    assert math.isclose(p.le95, 9.0, rel_tol=1e-5)

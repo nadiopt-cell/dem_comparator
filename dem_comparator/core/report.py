@@ -29,6 +29,7 @@ th { background: #f3f5f7; }
 .label, td.label, th.label { text-align: left; }
 tr:nth-child(even) td { background: #fafafa; }
 .kv { background: #f8f8f8; padding: 8px 12px; border-radius: 4px; display: inline-block; margin: 2px 4px 2px 0; }
+.hint { color: #666; font-size: 12px; margin: 4px 0; }
 footer { margin-top: 24px; color: #888; font-size: 12px; }
 """
 
@@ -84,6 +85,9 @@ class ReportGenerator:
   <div>{param_html}</div>
 
   <h2>Pairwise statistics ({len(pairs)} pairs)</h2>
+  <p class="hint">NMAD = normalised median absolute deviation (robust);
+  LE90/LE95 = 90th/95th percentile of the absolute difference. Robust
+  metrics are resistant to outliers that inflate RMSE.</p>
   <table>
     <thead>
       <tr>
@@ -93,6 +97,10 @@ class ReportGenerator:
         <th>MAE (m)</th>
         <th>RMSE (m)</th>
         <th>Std dev (m)</th>
+        <th>Median (m)</th>
+        <th>NMAD (m)</th>
+        <th>LE90 (m)</th>
+        <th>LE95 (m)</th>
         <th>Min (m)</th>
         <th>Max (m)</th>
       </tr>
@@ -119,6 +127,10 @@ class ReportGenerator:
                 p.mae,
                 p.rmse,
                 p.std_dev,
+                p.median,
+                p.nmad,
+                p.le90,
+                p.le95,
                 p.diff_min,
                 p.diff_max,
             )
