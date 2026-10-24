@@ -14,6 +14,8 @@ class FABDEMSource(BaseDEMSource):
         "removed. Mirrored on Microsoft Planetary Computer."
     )
 
+    vertical_datum = "EGM2008"
+
     # Coverage follows Copernicus GLO-30 (global); FABDEM tiles only exist
     # over land — the STAC probe in BaseDEMSource.is_available() filters
     # ocean-only bboxes honestly at run time.

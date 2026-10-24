@@ -13,6 +13,10 @@
 - All rasters are automatically aligned to one grid (EPSG:4326; selectable resolution 10 / 30 / 90 m, converted to degrees latitude-aware so the ground sampling matches the requested metres)
 - Pairwise comparison in two modes: all pairs, or against a chosen reference DEM
 - Per-pair outputs: difference raster + statistics (Mean Bias, MAE, RMSE, Std. Dev., Median, NMAD, LE90/LE95, Min/Max difference, valid pixel count)
+- **Difference histograms** (inline SVG) and a machine-readable **stats.csv** in every report
+- **Tile cache**: PC tiles are stored once per source in the QGIS profile and reused by later runs (repeat runs over the same area are near-instant and immune to SAS-token expiry)
+- **Automatic retries** with exponential backoff for transient Planetary Computer errors (HTTP 429/5xx, network hiccups)
+- **Vertical datum awareness**: mixing EGM96-referenced (SRTM/NASADEM/AW3D30) with EGM2008-referenced (FABDEM/GLO-30) sources raises a warning in the log and the report
 - Difference rasters come **pre-styled** with a diverging blue→red colour ramp (blue = lower, red = higher)
 - Honest per-source **coverage checks** (latitude bounds + STAC probe) with clear skip reasons
 - Runs can be **cancelled** at every stage; dialog settings **persist** between QGIS sessions
@@ -20,13 +24,13 @@
 - **HTML report** with run parameters and the full statistics table
 - Long-running work runs as a background `QgsTask` — the UI stays responsive and can be cancelled
 
-| Source | Type | Resolution |
-|---|---|---|
-| FABDEM | DTM | ~30 m |
-| Copernicus GLO-30 | DSM | 30 m |
-| NASADEM | DSM | 30 m |
-| ALOS AW3D30 | DSM | 30 m |
-| SRTM v3 | DSM | 30 m |
+| Source | Type | Resolution | Vertical datum |
+|---|---|---|---|
+| FABDEM | DTM | ~30 m | EGM2008 |
+| Copernicus GLO-30 | DSM | 30 m | EGM2008 |
+| NASADEM | DSM | 30 m | EGM96 |
+| ALOS AW3D30 | DSM | 30 m | EGM96 |
+| SRTM v3 | DSM | 30 m | EGM96 |
 
 ## Requirements
 
@@ -95,6 +99,10 @@ Licensed under the **GNU General Public License v2.0 or later** — see [LICENSE
 - Все растры автоматически приводятся к единой сетке (EPSG:4326; разрешение 10 / 30 / 90 м с учётом широты — наземный шаг соответствует запрошенным метрам)
 - Два режима сравнения: все пары или относительно выбранного эталонного DEM
 - Для каждой пары: растр разницы и статистика (Mean Bias, MAE, RMSE, Std. Dev., Median, NMAD, LE90/LE95, Min/Max разницы, число валидных пикселей)
+- **Гистограммы разниц** (встроенный SVG) и машиночитаемый **stats.csv** в каждом отчёте
+- **Кэш тайлов**: тайлы PC сохраняются один раз в профиль QGIS и переиспользуются (повторные прогоны по той же площади — почти мгновенные и не зависят от срока жизни SAS-токена)
+- **Автоматические повторы** с экспоненциальной задержкой при временных ошибках Planetary Computer (HTTP 429/5xx, сетевые сбои)
+- **Учёт вертикальных датумов**: смешение EGM96 (SRTM/NASADEM/AW3D30) и EGM2008 (FABDEM/GLO-30) даёт предупреждение в журнале и отчёте
 - Растры разниц сразу **окрашены** в дивергентную шкалу синий→красный (синий = отрицательная разница, красный = положительная)
 - Честная **проверка покрытия** для каждого источника (широтные границы + STAC-проба) с понятными причинами пропуска
 - Запуск можно **отменить** на любом этапе; настройки диалога **сохраняются** между сессиями QGIS

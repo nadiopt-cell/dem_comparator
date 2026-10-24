@@ -1,20 +1,54 @@
 """Tests for the Planetary Computer client (pure stdlib — run anywhere).
 
 Covers SAS-token caching, signed-href idempotency, STAC pagination,
-asset fallback selection and filename sanitisation.
+asset fallback selection, filename sanitisation and the retry/backoff
+policy (issue #8) plus the tile download helper (issue #5).
 """
 from __future__ import annotations
+
+import io
+import urllib.error
 
 import pytest
 
 from conftest import HAVE_QGIS  # noqa: F401  (ensures stubs load first)
 
+from dem_comparator.core import pc_client as pc_mod
 from dem_comparator.core.pc_client import (
     PCError,
     PCItem,
     PlanetaryComputerClient,
     _safe_filename,
+    download_to_file,
 )
+
+
+class _FakeResponse:
+    """Minimal context-manager response returning fixed bytes once.
+
+    ``read`` yields the payload on the first call and ``b""`` afterwards,
+    mimicking EOF — otherwise a chunked reader would loop forever.
+    """
+
+    def __init__(self, payload: bytes = b'{"ok": 1}'):
+        self._payload = payload
+        self._read_done = False
+
+    def read(self, size: int = -1):
+        if self._read_done:
+            return b""
+        self._read_done = True
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _http_error(code: int) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError("http://pc/x", code, "err", None, io.BytesIO(b""))
 
 
 @pytest.fixture
@@ -128,3 +162,116 @@ def test_find_items_falls_back_to_raster_asset(client, monkeypatch):
 def test_safe_filename():
     assert _safe_filename("https://pc/Some Path/Weird~Name.tif?token=1") == "Weird_Name.tif"
     assert _safe_filename("https://pc/noext") == "noext.tif"
+
+
+# ------------------------------------------------------------------- retry
+def test_get_json_retries_transient_then_succeeds(client, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout=None):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise _http_error(503)
+        return _FakeResponse(b'{"token": "t"}')
+
+    monkeypatch.setattr(pc_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(pc_mod, "_sleep", lambda s: None)
+
+    assert client._http_get_json("http://pc/x") == {"token": "t"}
+    assert calls["n"] == 3, "503 must be retried until success"
+
+
+def test_get_json_does_not_retry_404(client, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout=None):
+        calls["n"] += 1
+        raise _http_error(404)
+
+    monkeypatch.setattr(pc_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(pc_mod, "_sleep", lambda s: None)
+
+    with pytest.raises(PCError):
+        client._http_get_json("http://pc/x")
+    assert calls["n"] == 1, "404 is permanent — no retry"
+
+
+def test_get_json_gives_up_after_attempts(client, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout=None):
+        calls["n"] += 1
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(pc_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(pc_mod, "_sleep", lambda s: None)
+
+    with pytest.raises(PCError):
+        client._http_get_json("http://pc/x")
+    assert calls["n"] == client.retry_attempts
+
+
+def test_post_json_retries_network_errors(client, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise urllib.error.URLError("timeout")
+        return _FakeResponse(b'{"features": []}')
+
+    monkeypatch.setattr(pc_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(pc_mod, "_sleep", lambda s: None)
+
+    body = client._http_post_json("http://pc/search", {"bbox": [0, 0, 1, 1]})
+    assert body == {"features": []}
+    assert calls["n"] == 2
+
+
+# --------------------------------------------------------- download_to_file
+def test_download_to_file_streams_content(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        pc_mod.urllib.request,
+        "urlopen",
+        lambda req, timeout=None: _FakeResponse(b"TIFF-BYTES"),
+    )
+
+    dest = tmp_path / "tile.tif"
+    out = download_to_file("https://pc/tile.tif", str(dest))
+
+    assert out == str(dest)
+    assert dest.read_bytes() == b"TIFF-BYTES"
+    assert not (tmp_path / "tile.tif.part").exists(), "temp file must be renamed"
+
+
+def test_download_to_file_leaves_no_part_on_failure(tmp_path, monkeypatch):
+    def fake_urlopen(req, timeout=None):
+        raise urllib.error.URLError("network down")
+
+    monkeypatch.setattr(pc_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(pc_mod, "_sleep", lambda s: None)
+
+    with pytest.raises(PCError):
+        download_to_file(
+            "https://pc/tile.tif", str(tmp_path / "tile.tif"),
+            attempts=2, backoff_seconds=0,
+        )
+    assert list(tmp_path.iterdir()) == [], ".part file must be cleaned up"
+
+
+def test_download_to_file_recovers_after_transient_errors(tmp_path, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_urlopen(req, timeout=None):
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise _http_error(429)
+        return _FakeResponse(b"OK")
+
+    monkeypatch.setattr(pc_mod.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(pc_mod, "_sleep", lambda s: None)
+
+    dest = tmp_path / "tile.tif"
+    download_to_file("https://pc/tile.tif", str(dest), backoff_seconds=0)
+    assert dest.read_bytes() == b"OK"
+    assert calls["n"] == 2

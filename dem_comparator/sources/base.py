@@ -31,17 +31,25 @@ through :mod:`core.pc_mosaic`. Subclasses only have to declare the PC
 from __future__ import annotations
 
 import os
+import re
 from abc import ABC
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsProcessingFeedback,
 )
 
-from ..core.pc_client import PCError, PlanetaryComputerClient, PCItem
+from ..core.pc_client import (
+    PCError,
+    PCItem,
+    PlanetaryComputerClient,
+    download_to_file,
+)
 from ..core.pc_mosaic import build_vrt_for_items, cleanup_vrt, warp_to_output
+
+_SAFE_ITEM_ID = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 @dataclass(frozen=True)
@@ -61,6 +69,15 @@ class BaseDEMSource(ABC):
     dem_type: str = "DSM"     # "DSM" or "DTM"
     description: str = ""
 
+    # Vertical datum of the published heights (issue #6). The three
+    # radar/photogrammetric surface models are referenced to the EGM96
+    # geoid, while the Copernicus family (GLO-30 and FABDEM, which is
+    # derived from it) uses EGM2008. Mixing the two families shifts
+    # heights by the local geoid difference (usually decimetres, up to a
+    # few metres regionally) — the orchestrator turns a mixed selection
+    # into a warning plus a report note.
+    vertical_datum: str = ""
+
     # Latitude coverage bounds in EPSG:4326 degrees. Subclasses narrow
     # these (SRTM/NASADEM: ±60°, AW3D30: ±82°); "global" sources keep the
     # defaults. The bounds are the fast, offline part of is_available().
@@ -76,9 +93,14 @@ class BaseDEMSource(ABC):
         self,
         cache_dir: str,
         pc_client: Optional[PlanetaryComputerClient] = None,
+        use_cache: bool = True,
     ) -> None:
         self.cache_dir = os.path.join(cache_dir, self.id)
         self.pc_client = pc_client or PlanetaryComputerClient()
+        # Tile cache (issue #5): when enabled, PC COG tiles are materialised
+        # under ``cache_dir`` once and reused by later runs. Disable to
+        # stream tiles straight from PC (old behaviour, no disk usage).
+        self.use_cache = use_cache
         # STAC results cache, keyed by a rounded WGS84 bbox tuple so that
         # is_available() can warm it and download() reuses it.
         self._items_cache: Dict[Tuple[float, float, float, float], List[PCItem]] = {}
@@ -183,6 +205,45 @@ class BaseDEMSource(ABC):
         return items
 
     # ---------------------------------------------------------------- fetch
+    def _tile_cache_path(self, item: PCItem) -> str:
+        """On-disk cache path for one STAC item's COG."""
+        safe_id = _SAFE_ITEM_ID.sub("_", item.item_id) or "tile"
+        return os.path.join(self.cache_dir, f"{safe_id}.tif")
+
+    def _ensure_local_tile(
+        self,
+        item: PCItem,
+        feedback: Optional[QgsProcessingFeedback] = None,
+    ) -> str:
+        """Return a GDAL-openable path for ``item``'s raster.
+
+        With ``use_cache`` on, the tile is downloaded once into
+        ``cache_dir`` and later runs hit the disk (issue #5) — this also
+        makes long warps immune to SAS-token expiry, because the token is
+        only baked into the URL during the initial fetch. With
+        ``use_cache`` off, the signed href is returned and GDAL streams
+        the tile over ``/vsicurl/`` (previous behaviour).
+        """
+        if not self.use_cache:
+            return item.signed_href
+
+        path = self._tile_cache_path(item)
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            if feedback is not None:
+                feedback.pushInfo(f"[{self.id}] tile cache hit: {os.path.basename(path)}")
+            return path
+
+        os.makedirs(self.cache_dir, exist_ok=True)
+        if feedback is not None:
+            feedback.pushInfo(f"[{self.id}] fetching tile {item.item_id} into cache")
+        download_to_file(
+            item.signed_href,
+            path,
+            user_agent=self.pc_client.user_agent,
+            feedback=feedback,
+        )
+        return path
+
     def download(
         self,
         extent,
@@ -190,7 +251,12 @@ class BaseDEMSource(ABC):
         feedback: Optional[QgsProcessingFeedback] = None,
         is_cancelled=None,
     ) -> str:
-        """Default download pipeline: PC STAC search + VRT mosaic + GDAL Warp."""
+        """Default download pipeline: PC STAC search + local tile cache +
+        VRT mosaic + GDAL Warp.
+
+        :param is_cancelled: optional ``callable() -> bool`` checked before
+            every tile fetch so cancelling stops promptly mid-download.
+        """
         from ..core.extent_utils import to_common_grid
 
         common = to_common_grid(extent)
@@ -210,11 +276,25 @@ class BaseDEMSource(ABC):
             )
 
         if feedback is not None:
-            feedback.pushInfo(f"[{self.id}] {len(items)} item(s); building mosaic VRT")
-        vrt_path = build_vrt_for_items(item.signed_href for item in items)
+            feedback.pushInfo(f"[{self.id}] {len(items)} item(s)")
+
+        local_tiles: List[str] = []
+        for item in items:
+            if is_cancelled is not None and is_cancelled():
+                from ..core.orchestrator import OrchestratorCancelled
+
+                raise OrchestratorCancelled(
+                    "Run cancelled by user during tile download."
+                )
+            local_tiles.append(self._ensure_local_tile(item, feedback=feedback))
+
+        if feedback is not None:
+            feedback.pushInfo(f"[{self.id}] building mosaic VRT")
+        vrt_path = build_vrt_for_items(local_tiles)
 
         try:
-            # 30 m at the equator ≈ 30 / 111320 degrees.
+            # Native resolution converted to degrees at the equator; the
+            # final latitude-aware gridding happens later in the Aligner.
             resolution_deg = spec.native_resolution_m / 111_320.0
             warp_to_output(
                 vrt_path=vrt_path,
@@ -247,4 +327,44 @@ def default_source_cache_dir(profile_cache_root: str) -> str:
     return os.path.join(profile_cache_root, "dem_comparator_cache")
 
 
-__all__ = ["BaseDEMSource", "PCTileSpec", "default_source_cache_dir"]
+# ------------------------------------------------------------- vertical datum
+
+def vertical_datum_summary(sources: Sequence[BaseDEMSource]) -> str:
+    """One-line summary of the vertical datums of ``sources`` (report param)."""
+    groups: Dict[str, List[str]] = {}
+    for src in sources:
+        datum = src.vertical_datum or "unspecified"
+        groups.setdefault(datum, []).append(src.name)
+    return "; ".join(
+        f"{datum} ({', '.join(names)})" for datum, names in groups.items()
+    )
+
+
+def vertical_datum_mismatch(sources: Sequence[BaseDEMSource]) -> Optional[str]:
+    """Return a warning string when selected sources mix vertical datums.
+
+    ``None`` when the selection is consistent (single datum, or sources
+    that do not declare one).
+    """
+    datums = {
+        src.vertical_datum for src in sources if src.vertical_datum
+    }
+    if len(datums) <= 1:
+        return None
+    return (
+        "Mixed vertical datums in this run: "
+        + vertical_datum_summary(sources)
+        + ". Heights differ by the local EGM96/EGM2008 geoid separation "
+        "(usually decimetres, up to a few metres regionally); treat the "
+        "mean bias between such pairs accordingly or convert to a common "
+        "datum first."
+    )
+
+
+__all__ = [
+    "BaseDEMSource",
+    "PCTileSpec",
+    "default_source_cache_dir",
+    "vertical_datum_mismatch",
+    "vertical_datum_summary",
+]

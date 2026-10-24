@@ -7,9 +7,10 @@ For a list of aligned rasters we either:
 
 Output: difference GeoTIFFs on disk and per-pair statistics (mean bias,
 MAE, RMSE, std-dev, median, NMAD, LE90/LE95, min, max, count of valid
-pixels). The robust metrics (median, NMAD, LE90, LE95) follow the DEM
-validation literature (Höhle & Höhle, 2009) and are far less sensitive
-to outliers than RMSE.
+pixels) plus a coarse histogram of the difference distribution that the
+HTML report renders as an inline SVG (issue #3). The robust metrics
+(median, NMAD, LE90, LE95) follow the DEM validation literature
+(Höhle & Höhle, 2009) and are far less sensitive to outliers than RMSE.
 """
 from __future__ import annotations
 
@@ -29,6 +30,10 @@ _PAIR_INDEX_PREFIX = "DIFF_"
 # standard deviation of a normal distribution (inverse normal CDF at 0.75,
 # 1/Phi^-1(3/4) ≈ 1.4826).
 _NMAD_SCALE = 1.4826
+
+# Number of histogram bins stored per pair for the report (issue #3).
+# 50 bins are enough to see skew/bimodality without bloating the report.
+_HIST_BINS = 50
 
 
 @dataclass
@@ -51,6 +56,12 @@ class PairStat:
     nmad: float = float("nan")
     le90: float = float("nan")
     le95: float = float("nan")
+    # Difference histogram for the report (issue #3): parallel arrays of
+    # length ``_HIST_BINS`` (counts) and ``_HIST_BINS + 1`` (bin edges).
+    # ``None`` when the pair had no valid pixels or was produced by an
+    # older run.
+    hist_counts: Optional[List[int]] = None
+    hist_edges: Optional[List[float]] = None
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -212,6 +223,7 @@ def _write_diff_and_stats(
         # No overlapping valid pixels: emit NaNs but still produce a raster.
         mean_bias = mae = rmse = std_dev = diff_min = diff_max = float("nan")
         median = nmad = le90 = le95 = float("nan")
+        hist_counts = hist_edges = None
     else:
         mean_bias = float(np.mean(diff_only_valid))
         mae = float(np.mean(np.abs(diff_only_valid)))
@@ -226,6 +238,7 @@ def _write_diff_and_stats(
         abs_diff = np.abs(diff_only_valid)
         le90 = float(np.percentile(abs_diff, 90))
         le95 = float(np.percentile(abs_diff, 95))
+        hist_counts, hist_edges = _difference_histogram(diff_only_valid)
 
     base = f"{_PAIR_INDEX_PREFIX}{label_a}_minus_{label_b}.tif"
     out_path = os.path.join(output_dir, base)
@@ -249,8 +262,19 @@ def _write_diff_and_stats(
         nmad=nmad,
         le90=le90,
         le95=le95,
+        hist_counts=hist_counts,
+        hist_edges=hist_edges,
     )
     return out_path, stats
+
+
+def _difference_histogram(values: np.ndarray) -> Tuple[List[int], List[float]]:
+    """Histogram of ``values`` as plain Python lists (JSON/HTML friendly)."""
+    counts, edges = np.histogram(values, bins=_HIST_BINS)
+    return (
+        [int(c) for c in counts],
+        [float(e) for e in edges],
+    )
 
 
 def _write_raster(path: str, template_ds, array: np.ndarray, nodata: float) -> None:

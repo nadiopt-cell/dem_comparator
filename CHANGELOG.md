@@ -4,7 +4,7 @@ All notable changes to the **DEM Comparator** QGIS plugin are documented
 here. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.3.0] — 2026-10-24
 
 ### Added
 - **Robust accuracy metrics** (issue [#2](https://github.com/nadiopt-cell/dem_comparator/issues/2)):
@@ -14,6 +14,28 @@ versioning follows [SemVer](https://semver.org/).
   columns in the HTML report. Robust metrics are resistant to the
   outliers that inflate RMSE, matching how FABDEM/Copernicus GLO-30 are
   validated in the literature.
+- **Difference histograms + CSV export** (issue
+  [#3](https://github.com/nadiopt-cell/dem_comparator/issues/3)): every
+  pair's difference distribution is embedded in the HTML report as an
+  inline SVG (50 bins, blue/red diverging colours, zero line), and the
+  full statistics table is also written as a machine-readable
+  `stats.csv` next to the report.
+- **Tile cache** (issue [#5](https://github.com/nadiopt-cell/dem_comparator/issues/5)):
+  Planetary Computer tiles are materialised once per source under the
+  QGIS profile cache and reused by later runs — repeat runs over the
+  same area skip the network entirely, and long warps are no longer
+  exposed to SAS-token expiry mid-run. Disable with `use_cache=False`
+  (per-source, in code) to restore pure streaming.
+- **Vertical datum warnings** (issue
+  [#6](https://github.com/nadiopt-cell/dem_comparator/issues/6)): each
+  source now declares its vertical datum (FABDEM/GLO-30 → EGM2008;
+  SRTM/NASADEM/AW3D30 → EGM96). Mixing the two families pushes a
+  warning to the QGIS log and adds a "Vertical datum" line to the
+  report parameters.
+- **Automatic retries** (issue [#8](https://github.com/nadiopt-cell/dem_comparator/issues/8)):
+  all Planetary Computer requests and tile downloads retry transient
+  failures (HTTP 429/5xx, network errors) with exponential backoff
+  (4 attempts, 1→2→4 s). Permanent errors (404/403) fail fast.
 
 ### Changed
 - **Latitude-aware grid resolution** (issue
@@ -25,6 +47,9 @@ versioning follows [SemVer](https://semver.org/).
   the ground sampling now matches the requested metres anywhere on the
   globe. The report shows the AOI centre latitude and the actual lon/lat
   grid steps. A full UTM target-CRS option remains future work.
+- Cancellation is now honoured *inside* the download stage: the tile
+  loop checks the cancel flag before every tile, so cancelling during a
+  multi-tile download stops promptly instead of after the whole source.
 
 ## [0.2.0] — 2026-10-24
 

@@ -27,15 +27,122 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 # Endpoint base URLs (current at time of writing — August 2026).
 STAC_ROOT = "https://planetarycomputer.microsoft.com/api/stac/v1"
 SAS_BASE = "https://planetarycomputer.microsoft.com/api/sas/v1/token"
 
+# Retry policy for transient failures (issue #8): PC throttles bursts and
+# occasionally answers 5xx; a short exponential backoff turns those into
+# successful downloads instead of a failed run.
+RETRY_ATTEMPTS = 4
+RETRY_BACKOFF_SECONDS = 1.0
+_RETRYABLE_HTTP_CODES = {429, 500, 502, 503, 504}
+_CHUNK_BYTES = 1 << 20  # 1 MiB
+
+# Module-level indirection so tests can patch the sleep out.
+_sleep = time.sleep
+
 
 class PCError(Exception):
     """Raised when the PC catalogue or token endpoint fails."""
+
+
+def _urlopen_with_retry(
+    request_factory: Callable[[int], urllib.request.Request],
+    *,
+    attempts: int = RETRY_ATTEMPTS,
+    backoff_seconds: float = RETRY_BACKOFF_SECONDS,
+    timeout: int = 60,
+    what: str = "PC",
+    feedback=None,
+):
+    """Open a URL with exponential backoff on transient errors.
+
+    ``request_factory(attempt)`` must build a *fresh* request for each
+    attempt (a consumed :class:`urllib.request.Request` cannot be resent
+    after a body-reading failure).
+
+    Retried: HTTP 429/5xx and network-level :class:`URLError`/``OSError``.
+    Other HTTP errors (403/404, …) are raised immediately — retrying them
+    cannot help. When all attempts are exhausted a :class:`PCError` is
+    raised with the last underlying exception as ``__cause__``.
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            return urllib.request.urlopen(request_factory(attempt), timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in _RETRYABLE_HTTP_CODES:
+                raise
+            last_exc = exc
+        except (urllib.error.URLError, OSError) as exc:
+            last_exc = exc
+        if attempt < attempts:
+            delay = backoff_seconds * (2 ** (attempt - 1))
+            if feedback is not None:
+                try:
+                    feedback.pushInfo(
+                        f"{what}: transient error ({last_exc}); "
+                        f"retry {attempt + 1}/{attempts} in {delay:.1f}s"
+                    )
+                except Exception:  # feedback must never break downloads
+                    pass
+            _sleep(delay)
+    raise PCError(f"{what}: giving up after {attempts} attempt(s): {last_exc}") from last_exc
+
+
+def download_to_file(
+    url: str,
+    dest_path: str,
+    *,
+    timeout: int = 300,
+    attempts: int = RETRY_ATTEMPTS,
+    backoff_seconds: float = RETRY_BACKOFF_SECONDS,
+    user_agent: str = "QGIS-DEM-Comparator/0.3 (PC)",
+    feedback=None,
+) -> str:
+    """Stream ``url`` to ``dest_path`` with retry/backoff (issue #5 helper).
+
+    The bytes land in ``dest_path + ".part"`` first and are renamed on
+    success, so a cancelled or failed download never leaves a corrupt
+    file behind. Returns ``dest_path``.
+    """
+    def _factory(_attempt: int) -> urllib.request.Request:
+        return urllib.request.Request(url, headers={"User-Agent": user_agent})
+
+    tmp_path = dest_path + ".part"
+    try:
+        with _urlopen_with_retry(
+            _factory,
+            attempts=attempts,
+            backoff_seconds=backoff_seconds,
+            timeout=timeout,
+            what="PC tile download",
+            feedback=feedback,
+        ) as resp, open(tmp_path, "wb") as fh:
+            while True:
+                chunk = resp.read(_CHUNK_BYTES)
+                if not chunk:
+                    break
+                fh.write(chunk)
+    except PCError:
+        _quiet_remove(tmp_path)
+        raise
+    except Exception as exc:
+        _quiet_remove(tmp_path)
+        raise PCError(f"Tile download failed for {url}: {exc}") from exc
+    os.replace(tmp_path, dest_path)
+    return dest_path
+
+
+def _quiet_remove(path: str) -> None:
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
 
 
 @dataclass
@@ -60,7 +167,9 @@ class PlanetaryComputerClient:
         self,
         token_cache_path: Optional[str] = None,
         timeout: int = 60,
-        user_agent: str = "QGIS-DEM-Comparator/0.1 (PC)",
+        user_agent: str = "QGIS-DEM-Comparator/0.3 (PC)",
+        retry_attempts: int = RETRY_ATTEMPTS,
+        retry_backoff_seconds: float = RETRY_BACKOFF_SECONDS,
     ) -> None:
         self._token_cache: Dict[str, Tuple[str, float]] = {}
         self._token_cache_path = token_cache_path
@@ -68,6 +177,11 @@ class PlanetaryComputerClient:
             self._load_token_cache()
         self.timeout = timeout
         self.user_agent = user_agent
+        # Retry policy (issue #8); feedback may be attached by the caller so
+        # retries show up in the QGIS log.
+        self.retry_attempts = retry_attempts
+        self.retry_backoff_seconds = retry_backoff_seconds
+        self.feedback = None
 
     # -------------------------------------------------------------- tokens
     def get_sas_token(self, collection: str) -> str:
@@ -177,9 +291,18 @@ class PlanetaryComputerClient:
 
     # --------------------------------------------------------------- HTTP
     def _http_get_json(self, url: str) -> dict:
-        req = urllib.request.Request(url, headers={"User-Agent": self.user_agent})
+        def _factory(_attempt: int) -> urllib.request.Request:
+            return urllib.request.Request(url, headers={"User-Agent": self.user_agent})
+
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with _urlopen_with_retry(
+                _factory,
+                attempts=self.retry_attempts,
+                backoff_seconds=self.retry_backoff_seconds,
+                timeout=self.timeout,
+                what="PC GET",
+                feedback=self.feedback,
+            ) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raise PCError(f"PC GET {url} -> {exc.code} {exc.reason}") from exc
@@ -188,17 +311,27 @@ class PlanetaryComputerClient:
 
     def _http_post_json(self, url: str, body: dict) -> dict:
         data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "User-Agent": self.user_agent,
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
+
+        def _factory(_attempt: int) -> urllib.request.Request:
+            return urllib.request.Request(
+                url,
+                data=data,
+                headers={
+                    "User-Agent": self.user_agent,
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with _urlopen_with_retry(
+                _factory,
+                attempts=self.retry_attempts,
+                backoff_seconds=self.retry_backoff_seconds,
+                timeout=self.timeout,
+                what="PC POST",
+                feedback=self.feedback,
+            ) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raise PCError(f"PC POST {url} -> {exc.code} {exc.reason}") from exc
@@ -251,5 +384,6 @@ __all__ = [
     "PlanetaryComputerClient",
     "PCItem",
     "PCError",
+    "download_to_file",
     "make_default_pc_client",
 ]

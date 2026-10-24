@@ -15,6 +15,7 @@ class SRTMSource(BaseDEMSource):
     )
 
     # Classic SRTM coverage: 60°S … 60°N.
+    vertical_datum = "EGM96"
     lat_min = -60.0
     lat_max = 60.0
 

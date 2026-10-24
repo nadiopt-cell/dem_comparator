@@ -13,6 +13,7 @@ class GLO30Source(BaseDEMSource):
         "ESA Copernicus DEM GLO-30 — global 30 m DSM. "
         "Mirrored on Microsoft Planetary Computer."
     )
+    vertical_datum = "EGM2008"
 
     # Global latitude coverage (defaults −90°…90°); tile-level coverage is
     # verified by the STAC probe in BaseDEMSource.is_available().

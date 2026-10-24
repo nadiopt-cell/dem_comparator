@@ -2,7 +2,7 @@
 name=DEM Comparator
 qgisMinimumVersion=3.34
 description=Download several global DEMs (FABDEM, GLO-30, NASADEM, AW3D30, SRTM) for the same area, align them to a common grid, and compare pairwise with statistics and an HTML report.
-version=0.2.0
+version=0.3.0
 author=nadiopt-cell
 email=nadiopt-cell@users.noreply.github.com
 about=This plugin fetches and compares multiple global DEMs on the same extent to help you choose the most suitable source for your task. All sources are downloaded via Microsoft Planetary Computer (no API keys required). Difference rasters come styled with a diverging blue-to-red colour ramp, runs can be cancelled, and dialog settings persist between QGIS sessions. Licensed under GPLv2 or later.

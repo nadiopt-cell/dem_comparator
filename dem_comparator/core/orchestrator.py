@@ -22,7 +22,11 @@ from .align import Aligner, RasterSpec, make_aligner
 from .compare import Comparator, ComparisonResult
 from .extent_utils import ExtentInfo, COMMON_CRS, to_common_grid
 from .report import ReportGenerator
-from ..sources.base import BaseDEMSource
+from ..sources.base import (
+    BaseDEMSource,
+    vertical_datum_mismatch,
+    vertical_datum_summary,
+)
 
 
 class OrchestratorError(Exception):
@@ -108,6 +112,13 @@ class Orchestrator:
             )
         self._set_progress(_PROGRESS_AFTER_AVAILABILITY)
 
+        # Vertical datum note (issue #6): Copernicus-family DEMs are
+        # EGM2008-referenced, the radar-era ones EGM96 — mixing them
+        # biases the mean differences by the local geoid separation.
+        datum_warning = vertical_datum_mismatch(usable)
+        if datum_warning and self.feedback is not None:
+            self.feedback.pushWarning(datum_warning)
+
         # 2) Download per-source rasters.
         downloaded: List[Tuple[BaseDEMSource, str]] = []
         download_span = _PROGRESS_AFTER_DOWNLOAD - _PROGRESS_AFTER_AVAILABILITY
@@ -119,7 +130,16 @@ class Orchestrator:
             raw_path = os.path.join(raw_dir, f"{src.id}.tif")
             self._push_info(f"Downloading {src.name}...")
             try:
-                src.download(common_extent, raw_path, feedback=self.feedback)
+                src.download(
+                    common_extent,
+                    raw_path,
+                    feedback=self.feedback,
+                    is_cancelled=(
+                        lambda: self.feedback is not None and self.feedback.isCanceled()
+                    ),
+                )
+            except OrchestratorCancelled:
+                raise
             except Exception as exc:
                 if self.feedback is not None:
                     self.feedback.reportError(f"{src.name}: download failed: {exc}")
@@ -183,6 +203,7 @@ class Orchestrator:
 
         # 5) Report.
         report_path = os.path.join(self.output_dir, "report.html")
+        csv_path = os.path.join(self.output_dir, "stats.csv")
         params = {
             "CRS": COMMON_CRS.authid(),
             "Resolution (m)": resolution_m,
@@ -193,6 +214,7 @@ class Orchestrator:
             "Resampling": resampling,
             "Comparison mode": comparison_mode,
             "Reference DEM": reference_label or "(none)",
+            "Vertical datum": vertical_datum_summary(usable),
             "Extent (WGS84)": (
                 f"{common_extent.rectangle.xMinimum():.4f}, "
                 f"{common_extent.rectangle.yMinimum():.4f} – "
@@ -201,7 +223,9 @@ class Orchestrator:
             ),
             "Selected sources": ", ".join(s.name for s in usable),
         }
-        ReportGenerator(report_path).generate(params, result.pairs, reference_label)
+        ReportGenerator(report_path).generate(
+            params, result.pairs, reference_label, csv_path=csv_path
+        )
         self._set_progress(_PROGRESS_AFTER_REPORT)
 
         return aligned_layers, result, report_path

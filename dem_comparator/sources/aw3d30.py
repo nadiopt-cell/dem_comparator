@@ -15,6 +15,7 @@ class AW3D30Source(BaseDEMSource):
     )
 
     # AW3D30 global release covers 82°S … 82°N.
+    vertical_datum = "EGM96"
     lat_min = -82.0
     lat_max = 82.0
 

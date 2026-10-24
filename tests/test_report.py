@@ -11,7 +11,7 @@ from dem_comparator.core.report import ReportGenerator, _fmt
 
 def _pair(a="FABDEM", b="Copernicus GLO-30", rmse=2.5, bias=1.5,
           vmin=-3.0, vmax=4.0, count=100, median=1.4, nmad=1.1,
-          le90=2.2, le95=2.8):
+          le90=2.2, le95=2.8, hist_counts=None, hist_edges=None):
     return PairStat(
         label_a=a,
         label_b=b,
@@ -27,6 +27,8 @@ def _pair(a="FABDEM", b="Copernicus GLO-30", rmse=2.5, bias=1.5,
         nmad=nmad,
         le90=le90,
         le95=le95,
+        hist_counts=hist_counts,
+        hist_edges=hist_edges,
     )
 
 
@@ -111,3 +113,78 @@ def test_fmt():
     assert _fmt(float("nan")) == "—"
     assert _fmt(None) == ""
     assert _fmt("abc") == "abc"
+
+
+# -------------------------------------------------------------- histograms
+def _hist_pair():
+    """A pair whose histogram spans −4…+4 m with a peak near +1."""
+    counts = [0, 2, 8, 30, 25, 15, 10, 6, 3, 1]
+    edges = [-4, -3.2, -2.4, -1.6, -0.8, 0.0, 0.8, 1.6, 2.4, 3.2, 4.0]
+    return _pair(hist_counts=counts, hist_edges=edges)
+
+
+def test_report_renders_histogram_svg(tmp_path):
+    out = tmp_path / "report.html"
+    ReportGenerator(str(out)).generate({}, [_hist_pair()], None)
+    doc = out.read_text(encoding="utf-8")
+
+    assert "Difference distribution" in doc
+    assert "<svg" in doc and "</svg>" in doc
+    assert "#2166ac" in doc, "negative bins must use the blue ramp colour"
+    assert "#b2182b" in doc, "positive bins must use the red ramp colour"
+    assert "stroke-dasharray" in doc, "zero line must be drawn when 0 is in range"
+    assert "100 valid pixels" in doc
+
+
+def test_report_skips_histogram_without_data(tmp_path):
+    out = tmp_path / "report.html"
+    ReportGenerator(str(out)).generate({}, [_pair()], None)
+    doc = out.read_text(encoding="utf-8")
+    assert "<svg" not in doc, "pairs without histogram data must not render SVG"
+    assert "Difference distribution" not in doc
+
+
+def test_report_skips_histogram_with_mismatched_edges(tmp_path):
+    out = tmp_path / "report.html"
+    bad = _pair(hist_counts=[1, 2, 3], hist_edges=[0.0, 1.0])  # need 4 edges
+    ReportGenerator(str(out)).generate({}, [bad], None)
+    doc = out.read_text(encoding="utf-8")
+    assert "<svg" not in doc, "corrupt histogram data must be ignored, not crash"
+
+
+# --------------------------------------------------------------------- CSV
+def test_csv_written_next_to_report(tmp_path):
+    csv_path = tmp_path / "stats.csv"
+    out = tmp_path / "report.html"
+    ReportGenerator(str(out)).generate({}, [_pair()], None, csv_path=str(csv_path))
+
+    assert csv_path.exists()
+    lines = csv_path.read_text(encoding="utf-8").strip().splitlines()
+    header = lines[0].split(",")
+    assert header[:4] == ["DEM A", "DEM B", "valid pixels", "mean bias (m)"]
+    assert "NMAD (m)" in header and "LE95 (m)" in header
+    row = lines[1].split(",")
+    assert row[0] == "FABDEM"
+    assert "2.5" in row, "rmse value must appear in the row"
+
+    # The HTML must link the CSV by its bare filename.
+    doc = out.read_text(encoding="utf-8")
+    assert 'href="stats.csv"' in doc
+
+
+def test_csv_nan_cells_are_empty(tmp_path):
+    import math
+
+    csv_path = tmp_path / "stats.csv"
+    nan_pair = PairStat(
+        label_a="A", label_b="B", valid_pixels=0,
+        mean_bias=math.nan, mae=math.nan, rmse=math.nan,
+        std_dev=math.nan, diff_min=math.nan, diff_max=math.nan,
+        diff_raster="DIFF_A_minus_B.tif",
+    )
+    ReportGenerator(str(tmp_path / "report.html")).generate(
+        {}, [nan_pair], None, csv_path=str(csv_path)
+    )
+    content = csv_path.read_text(encoding="utf-8")
+    assert "nan" not in content.lower(), "NaN must become an empty cell"
+    assert "A,B,0" in content
